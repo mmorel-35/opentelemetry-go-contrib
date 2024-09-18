@@ -7,6 +7,7 @@
 package tools // import "go.opentelemetry.io/contrib/tools"
 
 import (
+	_ "github.com/Antonboom/testifylint"
 	_ "github.com/atombender/go-jsonschema"
 	_ "github.com/client9/misspell/cmd/misspell"
 	_ "github.com/golangci/golangci-lint/cmd/golangci-lint"

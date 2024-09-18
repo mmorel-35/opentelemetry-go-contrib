@@ -66,7 +66,10 @@ $(GOJSONSCHEMA): PACKAGE=github.com/atombender/go-jsonschema
 GOVULNCHECK = $(TOOLS)/govulncheck
 $(GOVULNCHECK): PACKAGE=golang.org/x/vuln/cmd/govulncheck
 
-tools: $(GOLANGCI_LINT) $(MISSPELL) $(GOCOVMERGE) $(STRINGER) $(PORTO) $(MULTIMOD) $(CROSSLINK) $(GOTMPL) $(GORELEASE) $(GOJSONSCHEMA) $(GOVULNCHECK)
+TESTIFYLINT = $(TOOLS)/testifylint
+$(TOOLS)/testifylint: PACKAGE=github.com/Antonboom/testifylint
+
+tools: $(GOLANGCI_LINT) $(MISSPELL) $(GOCOVMERGE) $(STRINGER) $(PORTO) $(MULTIMOD) $(CROSSLINK) $(GOTMPL) $(GORELEASE) $(GOJSONSCHEMA) $(GOVULNCHECK) $(TESTIFYLINT)
 
 # Virtualized python tools via docker
 
@@ -153,6 +156,14 @@ golangci-lint/%: $(GOLANGCI_LINT)
 	@echo 'golangci-lint $(if $(ARGS),$(ARGS) ,)$(DIR)' \
 		&& cd $(DIR) \
 		&& $(GOLANGCI_LINT) run --allow-serial-runners $(ARGS)
+
+.PHONY: testifylint
+testifylint: $(OTEL_GO_MOD_DIRS:%=testifylint/%)
+testifylint/%: DIR=$*
+testifylint/%: $(TESTIFYLINT)
+	@echo 'testifylint -fix ./... in $(DIR)' \
+		&& cd $(DIR) \
+		&& $(TESTIFYLINT) --enable-all --disable=compares,error-is-as,error-nil,expected-actual,float-compare,formatter,go-require,negative-positive,nil-compare,require-error -fix ./...
 
 .PHONY: crosslink
 crosslink: $(CROSSLINK)
