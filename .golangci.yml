@@ -58,7 +58,6 @@ linters:
         - assignOp
         - elseif
         - exitAfterDefer
-        - exposedSyncMutex
         - hugeParam
         - rangeValCopy
         - typeUnparen
