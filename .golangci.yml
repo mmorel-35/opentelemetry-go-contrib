@@ -72,6 +72,11 @@ linters:
         - ^[ ]*[-•]
         # Exclude sentences prefixing a list.
         - :$
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
     misspell:
       locale: US
       ignore-rules:
