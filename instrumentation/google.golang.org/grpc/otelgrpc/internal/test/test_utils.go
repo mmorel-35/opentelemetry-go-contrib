@@ -112,8 +112,9 @@ func DoClientStreaming(ctx context.Context, tc testpb.TestServiceClient, args ..
 		req := &testpb.StreamingInputCallRequest{
 			Payload: pl,
 		}
-		if err := stream.Send(req); err != nil {
-			logger.Fatalf("%v has error %v while sending %v", stream, err, req)
+		serr := stream.Send(req)
+		if serr != nil {
+			logger.Fatalf("%v has error %v while sending %v", stream, serr, req)
 		}
 		sum += s
 	}

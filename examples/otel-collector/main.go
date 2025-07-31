@@ -114,8 +114,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if err := shutdownTracerProvider(ctx); err != nil {
-			log.Fatalf("failed to shutdown TracerProvider: %s", err)
+		derr := shutdownTracerProvider(ctx)
+		if derr != nil {
+			log.Fatalf("failed to shutdown TracerProvider: %s", derr)
 		}
 	}()
 
@@ -124,8 +125,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if err := shutdownMeterProvider(ctx); err != nil {
-			log.Fatalf("failed to shutdown MeterProvider: %s", err)
+		derr := shutdownMeterProvider(ctx)
+		if derr != nil {
+			log.Fatalf("failed to shutdown MeterProvider: %s", derr)
 		}
 	}()
 

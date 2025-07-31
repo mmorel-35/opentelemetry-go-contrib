@@ -66,9 +66,9 @@ func lambdaHandler(ctx context.Context) error {
 	}
 
 	defer func() {
-		err := res.Body.Close()
-		if err != nil {
-			log.Printf("failed to close http response body, %v\n", err)
+		cerr := res.Body.Close()
+		if cerr != nil {
+			log.Printf("failed to close http response body, %v\n", cerr)
 		}
 	}()
 

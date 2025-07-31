@@ -496,13 +496,13 @@ func TestNewHandlerConfiguration(t *testing.T) {
 		require.IsType(t, &recorder{}, h.logger)
 
 		l := h.logger.(*recorder)
-		scope := scope{
+		expectedScope := scope{
 			Name:       "name",
 			Version:    "ver",
 			SchemaURL:  "url",
 			Attributes: attribute.NewSet(attribute.String("testattr", "testval")),
 		}
-		assert.Equal(t, scope, l.Scope)
+		assert.Equal(t, expectedScope, l.Scope)
 	})
 }
 

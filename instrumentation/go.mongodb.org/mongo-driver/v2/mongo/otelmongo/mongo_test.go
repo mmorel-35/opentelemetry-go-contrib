@@ -227,8 +227,8 @@ func TestDBCollectionAttribute(t *testing.T) {
 			require.NoError(t, err)
 
 			defer func() {
-				err := client.Disconnect(context.Background())
-				require.NoError(t, err)
+				derr := client.Disconnect(context.Background())
+				require.NoError(t, derr)
 			}()
 
 			_, err = tc.operation(ctx, client.Database("test-database"))

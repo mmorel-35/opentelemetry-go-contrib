@@ -49,14 +49,14 @@ func (detector *resourceDetector) getClient() client {
 
 // Detect detects associated resources when running in AWS environment.
 func (detector *resourceDetector) Detect(ctx context.Context) (*resource.Resource, error) {
-	// Return nil if not able to establish valid client
-	client := detector.getClient()
-	if client == nil {
+	// Return nil if not able to establish valid cli
+	cli := detector.getClient()
+	if cli == nil {
 		return nil, errClient
 	}
 
 	// Available method removed in aws-sdk-go-v2, return empty resource if client returns error
-	doc, err := client.GetInstanceIdentityDocument(ctx, nil)
+	doc, err := cli.GetInstanceIdentityDocument(ctx, nil)
 	if err != nil {
 		return resource.Empty(), nil
 	}
@@ -72,7 +72,7 @@ func (detector *resourceDetector) Detect(ctx context.Context) (*resource.Resourc
 		semconv.HostType(doc.InstanceType),
 	}
 
-	m := &metadata{client: client}
+	m := &metadata{client: cli}
 	m.add(ctx, semconv.HostNameKey, "hostname")
 
 	attributes = append(attributes, m.attributes...)

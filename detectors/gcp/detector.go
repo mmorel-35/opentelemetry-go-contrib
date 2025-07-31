@@ -107,14 +107,16 @@ func (r *resourceBuilder) add(key attribute.Key, detect func() (string, error)) 
 }
 
 func (r *resourceBuilder) addInt(key attribute.Key, detect func() (string, error)) {
-	if v, err := detect(); err == nil {
-		if vi, err := strconv.Atoi(v); err == nil {
+	v, err := detect()
+	if err != nil {
+		r.errs = append(r.errs, err)
+	} else {
+		vi, err := strconv.Atoi(v)
+		if err == nil {
 			r.attrs = append(r.attrs, key.Int(vi))
 		} else {
 			r.errs = append(r.errs, err)
 		}
-	} else {
-		r.errs = append(r.errs, err)
 	}
 }
 

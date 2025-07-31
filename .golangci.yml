@@ -75,7 +75,6 @@ linters:
     govet:
       disable:
         - fieldalignment
-        - shadow
       enable-all: true
     misspell:
       locale: US

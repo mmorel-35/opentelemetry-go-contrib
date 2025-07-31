@@ -115,7 +115,8 @@ func monitoring(exporter metric.Exporter) error {
 	}
 
 	log.Println("Registering a cumulative metric using an OpenCensus view.")
-	if err := view.Register(countView); err != nil {
+	err = view.Register(countView)
+	if err != nil {
 		return fmt.Errorf("failed to register views: %w", err)
 	}
 	ctx, err := tag.New(context.Background(), tag.Insert(keyType, "view"))
