@@ -7,9 +7,11 @@ linters:
   enable:
     - asasalint
     - bodyclose
+    - contextcheck
     - depguard
     - errcheck
     - errorlint
+    - fatcontext
     - gocritic
     - godot
     - gosec
