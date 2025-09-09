@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"log"
 
-	"go.opentelemetry.io/contrib/propagators/skywalking"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/propagators/skywalking"
 )
 
 func ExampleSkyWalking() {

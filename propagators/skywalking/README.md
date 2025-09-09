@@ -4,50 +4,55 @@ This package provides a SkyWalking propagator for OpenTelemetry Go.
 
 ## Status
 
-⚠️ **INCOMPLETE IMPLEMENTATION** ⚠️
+✅ **COMPLETED IMPLEMENTATION** ✅
 
-This is a foundational implementation of the SkyWalking propagator that follows the established patterns used by other propagators in this repository. However, it requires completion based on the official SkyWalking specification.
+This is a complete implementation of the SkyWalking propagator that follows the official SkyWalking v8 specification for cross-process propagation headers.
 
 ## What's Implemented
 
-- [x] Basic project structure following OpenTelemetry Go Contrib patterns
+- [x] Full SkyWalking v8 SW8 header format implementation
+- [x] Base64 encoding/decoding of header fields as per specification
+- [x] Proper sampling flag handling
+- [x] Complete project structure following OpenTelemetry Go Contrib patterns
 - [x] Go module setup with proper dependencies
 - [x] Implementation of `propagation.TextMapPropagator` interface
-- [x] Basic header injection and extraction for `sw8` and `sw8-correlation` headers
+- [x] Header injection and extraction for `sw8` headers
 - [x] Comprehensive test suite with unit tests and benchmarks
 - [x] Example usage documentation
-- [x] Proper error handling structure
+- [x] Proper error handling for malformed headers
 - [x] Version management
 
-## What's Missing (Required to Complete)
+## SW8 Header Format
 
-The implementation is currently incomplete and requires the following information from the official SkyWalking specification:
+The implementation follows the official SkyWalking v8 specification:
 
-### 1. SW8 Header Format Specification
-- **Current**: Placeholder format with basic fields
-- **Needed**: Exact field order, encoding, and format requirements
-- **Reference**: https://skywalking.apache.org/docs/main/next/en/api/x-process-propagation-headers-v3/
+```
+sw8: {sample-flag}-{trace-id}-{segment-id}-{span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{address-used-at-client}
+```
 
-### 2. Field Encoding Details
-- **Trace ID encoding**: Format and padding requirements
-- **Span ID encoding**: Format and relationship to segment ID
-- **Service information**: How to encode service name, instance, and endpoint
-- **Sampling flags**: How sampling decisions are represented
+Where:
+- **Field 0**: Sample flag ("1" if sampled, "0" if not)
+- **Field 1**: Trace ID (Base64 encoded)
+- **Field 2**: Segment ID (Base64 encoded)
+- **Field 3**: Span ID (integer)
+- **Field 4**: Parent service (Base64 encoded)
+- **Field 5**: Parent service instance (Base64 encoded)
+- **Field 6**: Parent endpoint (Base64 encoded)
+- **Field 7**: Address used at client (Base64 encoded)
 
-### 3. SW8-Correlation Header (if supported)
-- **Format**: Key-value encoding for correlation data
-- **Limits**: Maximum size, allowed characters, etc.
-- **Integration**: How it relates to OpenTelemetry baggage
+## Features
 
-### 4. Error Handling Requirements
-- **Invalid headers**: How to handle malformed headers
-- **Backward compatibility**: Support for older header versions
-- **Fallback behavior**: What to do when headers are partially invalid
+### Implemented
+- ✅ SW8 header injection and extraction
+- ✅ Base64 encoding/decoding of appropriate fields
+- ✅ Sampling flag propagation
+- ✅ Round-trip compatibility
+- ✅ Error handling for malformed headers
 
-### 5. Integration Details
-- **Service mapping**: How OpenTelemetry service concepts map to SkyWalking
-- **Resource attributes**: Which resource attributes should be used for service info
-- **Sampling**: How OpenTelemetry sampling decisions map to SkyWalking flags
+### Future Enhancements
+- [ ] SW8-Correlation header support for baggage propagation
+- [ ] Service name extraction from OpenTelemetry resource attributes
+- [ ] Advanced field mapping customization
 
 ## Current Placeholder Implementation
 
