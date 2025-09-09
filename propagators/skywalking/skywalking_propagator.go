@@ -19,12 +19,6 @@ const (
 	sw8Header            = "sw8"
 	sw8CorrelationHeader = "sw8-correlation"
 
-	// Optional headers for service metadata (can be set by applications).
-	sw8ServiceNameHeader     = "sw8-service-name"
-	sw8ServiceInstanceHeader = "sw8-service-instance"
-	sw8EndpointHeader        = "sw8-endpoint"
-	sw8TargetAddressHeader   = "sw8-target-address"
-
 	// Header field separator.
 	fieldSeparator = "-"
 
@@ -60,9 +54,7 @@ var (
 // contain additional correlation data.
 //
 // For service metadata (service name, service instance, endpoint, target address),
-// the propagator will first check for corresponding headers in the carrier
-// (sw8-service-name, sw8-service-instance, sw8-endpoint, sw8-target-address).
-// If not found, it will use default "unknown" values.
+// the propagator uses default "unknown" values as per the stateless design.
 type Propagator struct{}
 
 var _ propagation.TextMapPropagator = &Propagator{}
@@ -72,8 +64,7 @@ var _ propagation.TextMapPropagator = &Propagator{}
 // This implementation follows the SkyWalking v3 specification for the sw8 header format:
 // sw8: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 //
-// For service metadata fields (4-7), the propagator will first check for corresponding
-// headers in the carrier. If not found, it will use default "unknown" values.
+// For service metadata fields (4-7), the propagator uses default "unknown" values.
 func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
@@ -97,24 +88,6 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 		parentSpanID = -parentSpanID
 	}
 
-	// Get service metadata from carrier, fall back to defaults if not present
-	serviceName := carrier.Get(sw8ServiceNameHeader)
-	if serviceName == "" {
-		serviceName = unknownServiceName
-	}
-	serviceInstance := carrier.Get(sw8ServiceInstanceHeader)
-	if serviceInstance == "" {
-		serviceInstance = unknownServiceInstance
-	}
-	endpoint := carrier.Get(sw8EndpointHeader)
-	if endpoint == "" {
-		endpoint = unknownEndpoint
-	}
-	targetAddress := carrier.Get(sw8TargetAddressHeader)
-	if targetAddress == "" {
-		targetAddress = unknownAddress
-	}
-
 	// Build sw8 header according to SkyWalking v3 specification  
 	// Format: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 	sw8Value := strings.Join([]string{
@@ -122,10 +95,10 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 		base64.StdEncoding.EncodeToString([]byte(sc.TraceID().String())),  // Field 1: trace ID (base64 encoded hex string)
 		base64.StdEncoding.EncodeToString([]byte(sc.SpanID().String())),   // Field 2: parent trace segment ID (base64 encoded hex string)
 		strconv.FormatInt(parentSpanID, 10),                               // Field 3: parent span ID (integer)
-		base64.StdEncoding.EncodeToString([]byte(serviceName)),            // Field 4: parent service (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(serviceInstance)),        // Field 5: parent service instance (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(endpoint)),               // Field 6: parent endpoint (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(targetAddress)),          // Field 7: target address (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(unknownServiceName)),     // Field 4: parent service (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(unknownServiceInstance)), // Field 5: parent service instance (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(unknownEndpoint)),        // Field 6: parent endpoint (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(unknownAddress)),         // Field 7: target address (base64 encoded)
 	}, fieldSeparator)
 
 	carrier.Set(sw8Header, sw8Value)

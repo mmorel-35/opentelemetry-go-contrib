@@ -48,7 +48,7 @@ Where:
 - ✅ Sampling flag propagation (0/1 format)
 - ✅ Round-trip compatibility
 - ✅ Error handling for malformed headers
-- ✅ Service information via carrier headers (stateless design)
+- ✅ Stateless design with default "unknown" values for service metadata
 - ✅ Proper trace ID and span ID handling
 
 ### Future Enhancements
@@ -74,42 +74,7 @@ otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 ))
 ```
 
-### Usage with Service Metadata
-
-To provide service information instead of using "unknown" values, set the corresponding headers in the carrier before injection:
-
-```go
-import "go.opentelemetry.io/contrib/propagators/skywalking"
-
-// Create propagator
-propagator := skywalking.Propagator{}
-
-// Set up carrier with service metadata
-carrier := make(propagation.MapCarrier)
-carrier.Set("sw8-service-name", "my-service")
-carrier.Set("sw8-service-instance", "instance-1")
-carrier.Set("sw8-endpoint", "/api/users")
-carrier.Set("sw8-target-address", "downstream:8080")
-
-// Use with OpenTelemetry
-otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-    propagator,
-    propagation.TraceContext{},
-    propagation.Baggage{},
-))
-
-// The propagator will read service metadata from these headers during injection
-otel.GetTextMapPropagator().Inject(ctx, carrier)
-```
-
-### Service Metadata Headers
-
-The propagator supports reading service information from the following carrier headers:
-
-- `sw8-service-name`: Service name (default: "unknown")
-- `sw8-service-instance`: Service instance (default: "unknown")  
-- `sw8-endpoint`: Endpoint name (default: "unknown")
-- `sw8-target-address`: Target address (default: "unknown")
+The propagator uses default "unknown" values for service metadata fields in the SW8 header, following the stateless design principle.
 
 ## Testing
 

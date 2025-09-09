@@ -185,16 +185,10 @@ func BenchmarkSkyWalkingPropagator_Extract(b *testing.B) {
 	}
 }
 
-// Test configuration options.
-func TestSkyWalkingPropagator_InjectWithCarrierMetadata(t *testing.T) {
+// Test that unknown values are used when no carrier metadata is set.
+func TestSkyWalkingPropagator_InjectWithDefaultValues(t *testing.T) {
 	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
-
-	// Set service metadata in carrier
-	carrier.Set(sw8ServiceNameHeader, "my-service")
-	carrier.Set(sw8ServiceInstanceHeader, "my-instance")
-	carrier.Set(sw8EndpointHeader, "/api/test")
-	carrier.Set(sw8TargetAddressHeader, "downstream:9090")
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    traceID,
@@ -208,24 +202,24 @@ func TestSkyWalkingPropagator_InjectWithCarrierMetadata(t *testing.T) {
 	sw8Value := carrier.Get(sw8Header)
 	assert.NotEmpty(t, sw8Value, "sw8 header should be set")
 
-	// Parse the sw8 header to verify carrier values are used
+	// Parse the sw8 header to verify default "unknown" values are used
 	fields := strings.Split(sw8Value, "-")
 	require.Len(t, fields, 8, "sw8 header should have 8 fields")
 
-	// Check that carrier values are properly base64 encoded in the header
+	// Check that default "unknown" values are properly base64 encoded in the header
 	serviceBytes, err := base64.StdEncoding.DecodeString(fields[4])
 	require.NoError(t, err)
-	assert.Equal(t, "my-service", string(serviceBytes))
+	assert.Equal(t, "unknown", string(serviceBytes))
 
 	instanceBytes, err := base64.StdEncoding.DecodeString(fields[5])
 	require.NoError(t, err)
-	assert.Equal(t, "my-instance", string(instanceBytes))
+	assert.Equal(t, "unknown", string(instanceBytes))
 
 	endpointBytes, err := base64.StdEncoding.DecodeString(fields[6])
 	require.NoError(t, err)
-	assert.Equal(t, "/api/test", string(endpointBytes))
+	assert.Equal(t, "unknown", string(endpointBytes))
 
 	addressBytes, err := base64.StdEncoding.DecodeString(fields[7])
 	require.NoError(t, err)
-	assert.Equal(t, "downstream:9090", string(addressBytes))
+	assert.Equal(t, "unknown", string(addressBytes))
 }
