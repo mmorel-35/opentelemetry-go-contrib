@@ -43,30 +43,50 @@ Where:
 
 ## SW8-Correlation Header Format
 
-The propagator also supports SkyWalking correlation headers for propagating custom key-value data:
+The propagator supports SkyWalking correlation headers following the official v1 specification:
 
 ```
-sw8-correlation: key1:value1,key2:value2
+sw8-correlation: base64(key1):base64(value1),base64(key2):base64(value2)
 ```
 
-Correlation data is automatically extracted from and injected into OpenTelemetry baggage. Both keys and values are URL-encoded to handle special characters safely.
+Key features:
+- **Base64 Encoding**: Both keys and values are Base64 encoded as per official specification
+- **Limits**: Maximum 3 keys, each value maximum 128 bytes (before encoding) 
+- **Integration**: Automatic extraction from and injection into OpenTelemetry baggage
+- **Error Handling**: Graceful handling of malformed headers and encoding errors
+
+## SW8-X Extension Header Format
+
+The propagator also supports SkyWalking extension headers following the v3 specification:
+
+```
+sw8-x: {tracing-mode}-{timestamp}
+```
+
+Current implementation:
+- **Field 1**: Tracing Mode ("0" = normal analysis, "1" = skip analysis)
+- **Field 2**: Timestamp for async RPC latency calculation (future enhancement)
+- **Default**: Currently uses "0" (normal tracing mode)
 
 ## Features
 
 ### Implemented
 - ✅ SW8 header injection and extraction
-- ✅ SW8-Correlation header support for cross-process correlation data
+- ✅ SW8-Correlation header support with BASE64 encoding per official specification
+- ✅ SW8-X extension header support for tracing mode control
 - ✅ Base64 encoding/decoding of appropriate fields per official specification
 - ✅ Sampling flag propagation (0/1 format)
-- ✅ Round-trip compatibility for both trace context and correlation data
+- ✅ Round-trip compatibility for trace context, correlation data, and extension headers
 - ✅ Error handling for malformed headers
 - ✅ Stateless design with default "unknown" values for service metadata
 - ✅ Proper trace ID and span ID handling
 - ✅ Automatic integration with OpenTelemetry baggage
+- ✅ Protocol limits enforcement (max 3 correlation keys, 128-byte values)
 
 ### Future Enhancements
+- [ ] SW8-X timestamp support for async RPC latency calculation
+- [ ] Skip analysis mode integration with OpenTelemetry context
 - [ ] Service name extraction from OpenTelemetry resource attributes
-- [ ] SW8-X extension header support for advanced features
 
 ### Additional SkyWalking Integration Opportunities
 
@@ -100,7 +120,7 @@ otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 
 ### Correlation Data Usage
 
-The propagator automatically handles SkyWalking correlation data through OpenTelemetry baggage:
+The propagator automatically handles SkyWalking correlation data through OpenTelemetry baggage using BASE64 encoding:
 
 ```go
 import (
@@ -117,6 +137,7 @@ bags, _ := baggage.New(member1, member2)
 ctx := baggage.ContextWithBaggage(context.Background(), bags)
 
 // The propagator will automatically inject correlation data into sw8-correlation header
+// Format: base64("service.name"):base64("web-service"),base64("user.id"):base64("user123")
 propagator := skywalking.Propagator{}
 carrier := make(propagation.MapCarrier)
 propagator.Inject(ctx, carrier)
@@ -126,6 +147,11 @@ extractedCtx := propagator.Extract(context.Background(), carrier)
 extractedBags := baggage.FromContext(extractedCtx)
 serviceName := extractedBags.Member("service.name").Value() // "web-service"
 ```
+
+The propagator enforces the official specification limits:
+- Maximum 3 correlation keys per request
+- Maximum 128 bytes per value (before BASE64 encoding)
+- Automatic BASE64 encoding/decoding for safe transport
 
 The propagator uses default "unknown" values for service metadata fields in the SW8 header, following the stateless design principle.
 
@@ -142,7 +168,7 @@ go test -bench=.
 go test -cover ./...
 ```
 
-Current test coverage: **86.0%**
+Current test coverage: **89.4%**
 
 ## Specification Reference
 

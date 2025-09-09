@@ -31,7 +31,8 @@ func TestSkyWalkingPropagator_Fields(t *testing.T) {
 
 	assert.Contains(t, fields, sw8Header)
 	assert.Contains(t, fields, sw8CorrelationHeader)
-	assert.Len(t, fields, 2)
+	assert.Contains(t, fields, sw8ExtensionHeader)
+	assert.Len(t, fields, 3)
 }
 
 func TestSkyWalkingPropagator_Inject_EmptyContext(t *testing.T) {
@@ -260,12 +261,22 @@ func TestSkyWalkingPropagator_Correlation_Inject(t *testing.T) {
 	pairs := strings.Split(correlationValue, ",")
 	assert.Len(t, pairs, 3)
 
-	// Verify all pairs are present (order may vary)
+	// Verify all pairs are present (order may vary)  
 	pairMap := make(map[string]string)
 	for _, pair := range pairs {
 		kv := strings.SplitN(pair, ":", 2)
 		require.Len(t, kv, 2)
-		pairMap[kv[0]] = kv[1]
+		
+		// Decode BASE64 encoded key and value
+		keyBytes, err := base64.StdEncoding.DecodeString(kv[0])
+		require.NoError(t, err)
+		key := string(keyBytes)
+		
+		valueBytes, err := base64.StdEncoding.DecodeString(kv[1])
+		require.NoError(t, err)
+		value := string(valueBytes)
+		
+		pairMap[key] = value
 	}
 
 	assert.Equal(t, "test-service", pairMap["service.name"])
@@ -286,8 +297,10 @@ func TestSkyWalkingPropagator_Correlation_Extract(t *testing.T) {
 	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown"))
 	carrier.Set(sw8Header, sw8Value)
 
-	// Set up correlation header
-	correlationValue := "service.name:test-service,user.id:12345,component:web-server"
+	// Set up correlation header with BASE64 encoded values as per specification
+	correlationValue := base64.StdEncoding.EncodeToString([]byte("service.name")) + ":" + base64.StdEncoding.EncodeToString([]byte("test-service")) + "," +
+	                    base64.StdEncoding.EncodeToString([]byte("user.id")) + ":" + base64.StdEncoding.EncodeToString([]byte("12345")) + "," +
+	                    base64.StdEncoding.EncodeToString([]byte("component")) + ":" + base64.StdEncoding.EncodeToString([]byte("web-server"))
 	carrier.Set(sw8CorrelationHeader, correlationValue)
 
 	ctx := p.Extract(context.Background(), carrier)
@@ -398,17 +411,17 @@ func TestSkyWalkingPropagator_Correlation_MalformedHeader(t *testing.T) {
 	}{
 		{
 			name:            "missing colon",
-			correlationValue: "key1value1,key2:value2",
+			correlationValue: "key1value1," + base64.StdEncoding.EncodeToString([]byte("key2")) + ":" + base64.StdEncoding.EncodeToString([]byte("value2")),
 			expectedBaggage: 1, // Only key2:value2 should be parsed
 		},
 		{
 			name:            "empty pairs",
-			correlationValue: "key1:value1,,key2:value2",
+			correlationValue: base64.StdEncoding.EncodeToString([]byte("key1")) + ":" + base64.StdEncoding.EncodeToString([]byte("value1")) + ",," + base64.StdEncoding.EncodeToString([]byte("key2")) + ":" + base64.StdEncoding.EncodeToString([]byte("value2")),
 			expectedBaggage: 2, // Empty pair should be skipped
 		},
 		{
-			name:            "invalid URL encoding",
-			correlationValue: "key1:value1,key%ZZ:value2",
+			name:            "invalid BASE64 encoding",
+			correlationValue: base64.StdEncoding.EncodeToString([]byte("key1")) + ":" + base64.StdEncoding.EncodeToString([]byte("value1")) + ",key%ZZ:value2",
 			expectedBaggage: 1, // Only key1:value1 should be parsed
 		},
 		{
@@ -433,4 +446,39 @@ func TestSkyWalkingPropagator_Correlation_MalformedHeader(t *testing.T) {
 			assert.Equal(t, tc.expectedBaggage, bags.Len())
 		})
 	}
+}
+
+func TestSkyWalkingPropagator_Sw8X_Extension(t *testing.T) {
+	p := Propagator{}
+	carrier := make(propagation.MapCarrier)
+
+	// Create valid span context
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+	// Inject headers
+	p.Inject(ctx, carrier)
+
+	// Verify SW8-X extension header is set
+	sw8XValue := carrier.Get(sw8ExtensionHeader)
+	assert.NotEmpty(t, sw8XValue)
+	assert.Equal(t, "0", sw8XValue) // Default tracing mode
+
+	// Test extraction with SW8-X header
+	extractCarrier := make(propagation.MapCarrier)
+	extractCarrier.Set(sw8Header, carrier.Get(sw8Header))
+	extractCarrier.Set(sw8ExtensionHeader, "1") // Skip analysis mode
+
+	extractedCtx := p.Extract(context.Background(), extractCarrier)
+
+	// Verify span context is still extracted correctly
+	extractedSC := trace.SpanContextFromContext(extractedCtx)
+	assert.True(t, extractedSC.IsValid())
+	assert.Equal(t, traceID, extractedSC.TraceID())
+	assert.Equal(t, spanID, extractedSC.SpanID())
 }
