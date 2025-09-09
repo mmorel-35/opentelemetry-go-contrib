@@ -186,39 +186,15 @@ func BenchmarkSkyWalkingPropagator_Extract(b *testing.B) {
 }
 
 // Test configuration options.
-func TestSkyWalkingPropagator_New(t *testing.T) {
-	// Test New function with options
-	p := New(
-		WithServiceName("test-service"),
-		WithServiceInstance("test-instance"),
-		WithEndpoint("test-endpoint"),
-		WithTargetAddress("127.0.0.1:8080"),
-	)
-
-	assert.Equal(t, "test-service", p.serviceName)
-	assert.Equal(t, "test-instance", p.serviceInstance)
-	assert.Equal(t, "test-endpoint", p.endpoint)
-	assert.Equal(t, "127.0.0.1:8080", p.targetAddress)
-}
-
-func TestSkyWalkingPropagator_New_DefaultValues(t *testing.T) {
-	// Test New function with no options uses defaults
-	p := New()
-
-	assert.Equal(t, unknownServiceName, p.serviceName)
-	assert.Equal(t, unknownServiceInstance, p.serviceInstance)
-	assert.Equal(t, unknownEndpoint, p.endpoint)
-	assert.Equal(t, unknownAddress, p.targetAddress)
-}
-
-func TestSkyWalkingPropagator_ConfiguredInject(t *testing.T) {
-	p := New(
-		WithServiceName("my-service"),
-		WithServiceInstance("my-instance"),
-		WithEndpoint("/api/test"),
-		WithTargetAddress("downstream:9090"),
-	)
+func TestSkyWalkingPropagator_InjectWithCarrierMetadata(t *testing.T) {
+	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
+
+	// Set service metadata in carrier
+	carrier.Set(sw8ServiceNameHeader, "my-service")
+	carrier.Set(sw8ServiceInstanceHeader, "my-instance")
+	carrier.Set(sw8EndpointHeader, "/api/test")
+	carrier.Set(sw8TargetAddressHeader, "downstream:9090")
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    traceID,
@@ -232,11 +208,11 @@ func TestSkyWalkingPropagator_ConfiguredInject(t *testing.T) {
 	sw8Value := carrier.Get(sw8Header)
 	assert.NotEmpty(t, sw8Value, "sw8 header should be set")
 
-	// Parse the sw8 header to verify configured values are used
+	// Parse the sw8 header to verify carrier values are used
 	fields := strings.Split(sw8Value, "-")
 	require.Len(t, fields, 8, "sw8 header should have 8 fields")
 
-	// Check that configured values are properly base64 encoded in the header
+	// Check that carrier values are properly base64 encoded in the header
 	serviceBytes, err := base64.StdEncoding.DecodeString(fields[4])
 	require.NoError(t, err)
 	assert.Equal(t, "my-service", string(serviceBytes))

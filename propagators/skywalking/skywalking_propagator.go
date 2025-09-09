@@ -19,6 +19,12 @@ const (
 	sw8Header            = "sw8"
 	sw8CorrelationHeader = "sw8-correlation"
 
+	// Optional headers for service metadata (can be set by applications).
+	sw8ServiceNameHeader     = "sw8-service-name"
+	sw8ServiceInstanceHeader = "sw8-service-instance"
+	sw8EndpointHeader        = "sw8-endpoint"
+	sw8TargetAddressHeader   = "sw8-target-address"
+
 	// Header field separator.
 	fieldSeparator = "-"
 
@@ -52,75 +58,23 @@ var (
 // This propagator extracts and injects trace context using SkyWalking v3 headers.
 // The sw8 header contains trace context information, while sw8-correlation can
 // contain additional correlation data.
-type Propagator struct {
-	serviceName     string
-	serviceInstance string
-	endpoint        string
-	targetAddress   string
-}
+//
+// For service metadata (service name, service instance, endpoint, target address),
+// the propagator will first check for corresponding headers in the carrier
+// (sw8-service-name, sw8-service-instance, sw8-endpoint, sw8-target-address).
+// If not found, it will use default "unknown" values.
+type Propagator struct{}
 
 var _ propagation.TextMapPropagator = &Propagator{}
-
-// Option configures the SkyWalking propagator.
-type Option interface {
-	apply(*Propagator)
-}
-
-type optionFunc func(*Propagator)
-
-func (fn optionFunc) apply(p *Propagator) {
-	fn(p)
-}
-
-// WithServiceName sets the service name used in the sw8 header.
-func WithServiceName(serviceName string) Option {
-	return optionFunc(func(p *Propagator) {
-		p.serviceName = serviceName
-	})
-}
-
-// WithServiceInstance sets the service instance used in the sw8 header.
-func WithServiceInstance(serviceInstance string) Option {
-	return optionFunc(func(p *Propagator) {
-		p.serviceInstance = serviceInstance
-	})
-}
-
-// WithEndpoint sets the endpoint used in the sw8 header.
-func WithEndpoint(endpoint string) Option {
-	return optionFunc(func(p *Propagator) {
-		p.endpoint = endpoint
-	})
-}
-
-// WithTargetAddress sets the target address used in the sw8 header.
-func WithTargetAddress(targetAddress string) Option {
-	return optionFunc(func(p *Propagator) {
-		p.targetAddress = targetAddress
-	})
-}
-
-// New creates a new SkyWalking propagator with the provided options.
-func New(opts ...Option) *Propagator {
-	p := &Propagator{
-		serviceName:     unknownServiceName,
-		serviceInstance: unknownServiceInstance,
-		endpoint:        unknownEndpoint,
-		targetAddress:   unknownAddress,
-	}
-	
-	for _, opt := range opts {
-		opt.apply(p)
-	}
-	
-	return p
-}
 
 // Inject injects the trace context into the carrier using SkyWalking headers.
 //
 // This implementation follows the SkyWalking v3 specification for the sw8 header format:
 // sw8: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
-func (p Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
+//
+// For service metadata fields (4-7), the propagator will first check for corresponding
+// headers in the carrier. If not found, it will use default "unknown" values.
+func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
 		return
@@ -143,20 +97,20 @@ func (p Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarri
 		parentSpanID = -parentSpanID
 	}
 
-	// Use configured values or fall back to defaults
-	serviceName := p.serviceName
+	// Get service metadata from carrier, fall back to defaults if not present
+	serviceName := carrier.Get(sw8ServiceNameHeader)
 	if serviceName == "" {
 		serviceName = unknownServiceName
 	}
-	serviceInstance := p.serviceInstance
+	serviceInstance := carrier.Get(sw8ServiceInstanceHeader)
 	if serviceInstance == "" {
 		serviceInstance = unknownServiceInstance
 	}
-	endpoint := p.endpoint
+	endpoint := carrier.Get(sw8EndpointHeader)
 	if endpoint == "" {
 		endpoint = unknownEndpoint
 	}
-	targetAddress := p.targetAddress
+	targetAddress := carrier.Get(sw8TargetAddressHeader)
 	if targetAddress == "" {
 		targetAddress = unknownAddress
 	}
@@ -180,7 +134,7 @@ func (p Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarri
 // Extract extracts the trace context from the carrier if it contains SkyWalking headers.
 //
 // This implementation follows the SkyWalking v3 specification for parsing the sw8 header.
-func (p Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8Value := carrier.Get(sw8Header)
 	if sw8Value == "" {
 		return ctx
@@ -257,6 +211,6 @@ func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 }
 
 // Fields returns the keys whose values are set with Inject.
-func (p Propagator) Fields() []string {
+func (Propagator) Fields() []string {
 	return []string{sw8Header, sw8CorrelationHeader}
 }

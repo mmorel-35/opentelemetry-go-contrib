@@ -66,14 +66,9 @@ func ExamplePropagator() {
 	// Trace ID preserved: true
 }
 
-func ExampleNew() {
-	// Create a configured SkyWalking propagator with service information
-	skyWalkingPropagator := skywalking.New(
-		skywalking.WithServiceName("my-service"),
-		skywalking.WithServiceInstance("instance-1"),
-		skywalking.WithEndpoint("/api/users"),
-		skywalking.WithTargetAddress("downstream:8080"),
-	)
+func ExamplePropagator_withCarrierMetadata() {
+	// Create a SkyWalking propagator
+	skyWalkingPropagator := skywalking.Propagator{}
 
 	// Set up the propagator in the global provider
 	otel.SetTextMapPropagator(
@@ -103,8 +98,14 @@ func ExampleNew() {
 	// Create a context with the span context
 	ctx := trace.ContextWithRemoteSpanContext(context.Background(), sc)
 
-	// Inject the context into a carrier (e.g., HTTP headers)
+	// Create carrier and set service metadata
 	carrier := make(propagation.MapCarrier)
+	carrier.Set("sw8-service-name", "my-service")
+	carrier.Set("sw8-service-instance", "instance-1")
+	carrier.Set("sw8-endpoint", "/api/users")
+	carrier.Set("sw8-target-address", "downstream:8080")
+
+	// Inject the context into the carrier
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 
 	fmt.Printf("SkyWalking header set: %t\n", carrier.Get("sw8") != "")
