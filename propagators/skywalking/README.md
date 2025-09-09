@@ -11,14 +11,15 @@ This is a complete implementation of the SkyWalking propagator that follows the 
 ## What's Implemented
 
 - [x] Full SkyWalking v3 SW8 header format implementation  
+- [x] SW8-Correlation header support for cross-process correlation data
 - [x] Base64 encoding/decoding of header fields as per official specification
 - [x] Proper sampling flag handling (0 = context exists but may be ignored, 1 = sampled)
 - [x] Complete project structure following OpenTelemetry Go Contrib patterns
 - [x] Go module setup with proper dependencies
 - [x] Implementation of `propagation.TextMapPropagator` interface
-- [x] Header injection and extraction for `sw8` headers
+- [x] Header injection and extraction for `sw8` and `sw8-correlation` headers
 - [x] Comprehensive test suite with unit tests and benchmarks
-- [x] Example usage documentation
+- [x] Example usage documentation including correlation examples
 - [x] Proper error handling for malformed headers
 - [x] Version management
 
@@ -40,21 +41,44 @@ Where:
 - **Field 6**: Parent endpoint (Base64 encoded, max 150 UTF-8 characters, operation name of first entry span)
 - **Field 7**: Target address (Base64 encoded, network address used on client end)
 
+## SW8-Correlation Header Format
+
+The propagator also supports SkyWalking correlation headers for propagating custom key-value data:
+
+```
+sw8-correlation: key1:value1,key2:value2
+```
+
+Correlation data is automatically extracted from and injected into OpenTelemetry baggage. Both keys and values are URL-encoded to handle special characters safely.
+
 ## Features
 
 ### Implemented
 - ✅ SW8 header injection and extraction
+- ✅ SW8-Correlation header support for cross-process correlation data
 - ✅ Base64 encoding/decoding of appropriate fields per official specification
 - ✅ Sampling flag propagation (0/1 format)
-- ✅ Round-trip compatibility
+- ✅ Round-trip compatibility for both trace context and correlation data
 - ✅ Error handling for malformed headers
 - ✅ Stateless design with default "unknown" values for service metadata
 - ✅ Proper trace ID and span ID handling
+- ✅ Automatic integration with OpenTelemetry baggage
 
 ### Future Enhancements
-- [ ] SW8-Correlation header support for baggage propagation
 - [ ] Service name extraction from OpenTelemetry resource attributes
 - [ ] SW8-X extension header support for advanced features
+
+### Additional SkyWalking Integration Opportunities
+
+This propagator provides the foundation for broader SkyWalking integration in OpenTelemetry Go Contrib. Additional components that could be implemented include:
+
+1. **Trace Exporter** (`exporters/skywalking/`) - Export OpenTelemetry spans to SkyWalking backend via the Trace Data Protocol v3
+2. **Resource Detector** (`detectors/skywalking/`) - Detect SkyWalking agent presence and extract service metadata  
+3. **Remote Sampler** (`samplers/skywalking/`) - SkyWalking-compatible sampling decisions and remote sampling support
+4. **Context Utilities** - Helper functions for working with SkyWalking-specific context values and correlation data
+5. **ID Generators** - Custom trace/span ID generation following SkyWalking conventions
+
+The most immediately valuable would be a **trace exporter** for sending spans to SkyWalking backend and a **resource detector** for seamless integration with existing SkyWalking deployments.
 
 ## Usage
 
@@ -72,6 +96,35 @@ otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
     propagation.TraceContext{},
     propagation.Baggage{},
 ))
+```
+
+### Correlation Data Usage
+
+The propagator automatically handles SkyWalking correlation data through OpenTelemetry baggage:
+
+```go
+import (
+    "go.opentelemetry.io/otel/baggage"
+    "go.opentelemetry.io/contrib/propagators/skywalking"
+)
+
+// Add correlation data to baggage
+member1, _ := baggage.NewMember("service.name", "web-service")
+member2, _ := baggage.NewMember("user.id", "user123")
+bags, _ := baggage.New(member1, member2)
+
+// Create context with baggage
+ctx := baggage.ContextWithBaggage(context.Background(), bags)
+
+// The propagator will automatically inject correlation data into sw8-correlation header
+propagator := skywalking.Propagator{}
+carrier := make(propagation.MapCarrier)
+propagator.Inject(ctx, carrier)
+
+// On the receiving side, correlation data is automatically extracted into baggage
+extractedCtx := propagator.Extract(context.Background(), carrier)
+extractedBags := baggage.FromContext(extractedCtx)
+serviceName := extractedBags.Member("service.name").Value() // "web-service"
 ```
 
 The propagator uses default "unknown" values for service metadata fields in the SW8 header, following the stateless design principle.

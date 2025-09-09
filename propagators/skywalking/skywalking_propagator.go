@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -35,6 +37,10 @@ const (
 	unknownServiceInstance = "unknown"
 	unknownEndpoint        = "unknown"
 	unknownAddress         = "unknown"
+
+	// SW8-Correlation header format separators.
+	correlationSeparator = ","
+	correlationKVSeparator = ":"
 )
 
 var (
@@ -45,6 +51,7 @@ var (
 	errInvalidSpanID      = errors.New("invalid span ID in sw8 header")
 	errInsufficientFields = errors.New("insufficient fields in sw8 header")
 	errBase64Decode       = errors.New("failed to decode base64 field")
+	errInvalidCorrelation = errors.New("invalid correlation data")
 )
 
 // Propagator implements the SkyWalking propagator.
@@ -65,6 +72,7 @@ var _ propagation.TextMapPropagator = &Propagator{}
 // sw8: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 //
 // For service metadata fields (4-7), the propagator uses default "unknown" values.
+// Correlation data from baggage is injected into the sw8-correlation header.
 func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
@@ -102,11 +110,15 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 	}, fieldSeparator)
 
 	carrier.Set(sw8Header, sw8Value)
+
+	// Inject correlation data from baggage into sw8-correlation header
+	injectCorrelation(ctx, carrier)
 }
 
 // Extract extracts the trace context from the carrier if it contains SkyWalking headers.
 //
-// This implementation follows the SkyWalking v3 specification for parsing the sw8 header.
+// This implementation follows the SkyWalking v3 specification for parsing the sw8 header
+// and extracts correlation data from the sw8-correlation header into baggage.
 func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8Value := carrier.Get(sw8Header)
 	if sw8Value == "" {
@@ -118,7 +130,12 @@ func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrie
 		return ctx
 	}
 
-	return trace.ContextWithRemoteSpanContext(ctx, sc)
+	ctx = trace.ContextWithRemoteSpanContext(ctx, sc)
+
+	// Extract correlation data from sw8-correlation header into baggage
+	ctx = extractCorrelation(ctx, carrier)
+
+	return ctx
 }
 
 // extractFromSw8 extracts trace context from sw8 header value.
@@ -186,4 +203,82 @@ func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 // Fields returns the keys whose values are set with Inject.
 func (Propagator) Fields() []string {
 	return []string{sw8Header, sw8CorrelationHeader}
+}
+
+// injectCorrelation injects correlation data from baggage into sw8-correlation header.
+//
+// The sw8-correlation header format is key:value pairs separated by commas.
+// Both keys and values are URL-encoded to handle special characters.
+// Format: "key1:value1,key2:value2"
+func injectCorrelation(ctx context.Context, carrier propagation.TextMapCarrier) {
+	bags := baggage.FromContext(ctx)
+	if bags.Len() == 0 {
+		return
+	}
+
+	var correlationPairs []string
+	for _, member := range bags.Members() {
+		// URL encode both key and value to handle special characters
+		encodedKey := url.QueryEscape(member.Key())
+		encodedValue := url.QueryEscape(member.Value())
+		correlationPairs = append(correlationPairs, encodedKey+correlationKVSeparator+encodedValue)
+	}
+
+	if len(correlationPairs) > 0 {
+		correlationValue := strings.Join(correlationPairs, correlationSeparator)
+		carrier.Set(sw8CorrelationHeader, correlationValue)
+	}
+}
+
+// extractCorrelation extracts correlation data from sw8-correlation header into baggage.
+//
+// The sw8-correlation header contains key:value pairs separated by commas.
+// Both keys and values are URL-decoded.
+func extractCorrelation(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+	correlationValue := carrier.Get(sw8CorrelationHeader)
+	if correlationValue == "" {
+		return ctx
+	}
+
+	pairs := strings.Split(correlationValue, correlationSeparator)
+	var members []baggage.Member
+
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		kv := strings.SplitN(pair, correlationKVSeparator, 2)
+		if len(kv) != 2 {
+			continue // Skip malformed pairs
+		}
+
+		// URL decode both key and value
+		key, err := url.QueryUnescape(kv[0])
+		if err != nil {
+			continue // Skip pairs with invalid encoding
+		}
+
+		value, err := url.QueryUnescape(kv[1])
+		if err != nil {
+			continue // Skip pairs with invalid encoding
+		}
+
+		member, err := baggage.NewMember(key, value)
+		if err != nil {
+			continue // Skip invalid baggage members
+		}
+
+		members = append(members, member)
+	}
+
+	if len(members) > 0 {
+		bags, err := baggage.New(members...)
+		if err == nil {
+			ctx = baggage.ContextWithBaggage(ctx, bags)
+		}
+	}
+
+	return ctx
 }

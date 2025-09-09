@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -222,4 +223,214 @@ func TestSkyWalkingPropagator_InjectWithDefaultValues(t *testing.T) {
 	addressBytes, err := base64.StdEncoding.DecodeString(fields[7])
 	require.NoError(t, err)
 	assert.Equal(t, "unknown", string(addressBytes))
+}
+
+func TestSkyWalkingPropagator_Correlation_Inject(t *testing.T) {
+	p := Propagator{}
+	carrier := make(propagation.MapCarrier)
+
+	// Create baggage with correlation data
+	member1, _ := baggage.NewMember("service.name", "test-service")
+	member2, _ := baggage.NewMember("user.id", "12345")
+	member3, _ := baggage.NewMember("component", "web-server")
+	
+	bags, err := baggage.New(member1, member2, member3)
+	require.NoError(t, err)
+
+	// Create context with span and baggage
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+	
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+	ctx = baggage.ContextWithBaggage(ctx, bags)
+
+	p.Inject(ctx, carrier)
+
+	// Verify sw8 header is set
+	assert.NotEmpty(t, carrier.Get(sw8Header))
+
+	// Verify sw8-correlation header is set
+	correlationValue := carrier.Get(sw8CorrelationHeader)
+	assert.NotEmpty(t, correlationValue)
+
+	// Parse correlation header
+	pairs := strings.Split(correlationValue, ",")
+	assert.Len(t, pairs, 3)
+
+	// Verify all pairs are present (order may vary)
+	pairMap := make(map[string]string)
+	for _, pair := range pairs {
+		kv := strings.SplitN(pair, ":", 2)
+		require.Len(t, kv, 2)
+		pairMap[kv[0]] = kv[1]
+	}
+
+	assert.Equal(t, "test-service", pairMap["service.name"])
+	assert.Equal(t, "12345", pairMap["user.id"])
+	assert.Equal(t, "web-server", pairMap["component"])
+}
+
+func TestSkyWalkingPropagator_Correlation_Extract(t *testing.T) {
+	p := Propagator{}
+	carrier := make(propagation.MapCarrier)
+
+	// Set up valid sw8 header
+	sw8Value := "1-" + base64.StdEncoding.EncodeToString([]byte(traceID.String())) + 
+	           "-" + base64.StdEncoding.EncodeToString([]byte(spanID.String())) +
+	           "-123-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown"))
+	carrier.Set(sw8Header, sw8Value)
+
+	// Set up correlation header
+	correlationValue := "service.name:test-service,user.id:12345,component:web-server"
+	carrier.Set(sw8CorrelationHeader, correlationValue)
+
+	ctx := p.Extract(context.Background(), carrier)
+
+	// Verify span context is extracted
+	sc := trace.SpanContextFromContext(ctx)
+	assert.True(t, sc.IsValid())
+	assert.Equal(t, traceID, sc.TraceID())
+
+	// Verify baggage is extracted from correlation header
+	bags := baggage.FromContext(ctx)
+	assert.Equal(t, 3, bags.Len())
+
+	// Verify individual baggage members
+	serviceName := bags.Member("service.name")
+	assert.Equal(t, "test-service", serviceName.Value())
+
+	userID := bags.Member("user.id")
+	assert.Equal(t, "12345", userID.Value())
+
+	component := bags.Member("component")
+	assert.Equal(t, "web-server", component.Value())
+}
+
+func TestSkyWalkingPropagator_Correlation_RoundTrip(t *testing.T) {
+	p := Propagator{}
+	
+	// Create original context with span and baggage
+	originalSC := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+
+	member1, _ := baggage.NewMember("service.name", "test-service")
+	member2, _ := baggage.NewMember("user.id", "12345")
+	member3, _ := baggage.NewMember("component", "web-server")
+	
+	originalBags, err := baggage.New(member1, member2, member3)
+	require.NoError(t, err)
+
+	originalCtx := trace.ContextWithSpanContext(context.Background(), originalSC)
+	originalCtx = baggage.ContextWithBaggage(originalCtx, originalBags)
+
+	// Inject into carrier
+	carrier := make(propagation.MapCarrier)
+	p.Inject(originalCtx, carrier)
+
+	// Extract from carrier
+	extractedCtx := p.Extract(context.Background(), carrier)
+
+	// Verify span context round trip
+	extractedSC := trace.SpanContextFromContext(extractedCtx)
+	assert.True(t, extractedSC.IsValid())
+	assert.Equal(t, originalSC.TraceID(), extractedSC.TraceID())
+	assert.Equal(t, originalSC.IsSampled(), extractedSC.IsSampled())
+
+	// Verify baggage round trip
+	extractedBags := baggage.FromContext(extractedCtx)
+	assert.Equal(t, originalBags.Len(), extractedBags.Len())
+
+	for _, originalMember := range originalBags.Members() {
+		extractedMember := extractedBags.Member(originalMember.Key())
+		assert.Equal(t, originalMember.Value(), extractedMember.Value())
+	}
+}
+
+func TestSkyWalkingPropagator_Correlation_EmptyBaggage(t *testing.T) {
+	p := Propagator{}
+	carrier := make(propagation.MapCarrier)
+
+	// Create context with span but no baggage
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+	
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+	p.Inject(ctx, carrier)
+
+	// Verify sw8 header is set
+	assert.NotEmpty(t, carrier.Get(sw8Header))
+
+	// Verify sw8-correlation header is not set for empty baggage
+	assert.Empty(t, carrier.Get(sw8CorrelationHeader))
+}
+
+func TestSkyWalkingPropagator_Correlation_MalformedHeader(t *testing.T) {
+	p := Propagator{}
+	carrier := make(propagation.MapCarrier)
+
+	// Set up valid sw8 header
+	sw8Value := "1-" + base64.StdEncoding.EncodeToString([]byte(traceID.String())) + 
+	           "-" + base64.StdEncoding.EncodeToString([]byte(spanID.String())) +
+	           "-123-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown"))
+	carrier.Set(sw8Header, sw8Value)
+
+	// Set up malformed correlation headers
+	testCases := []struct {
+		name            string
+		correlationValue string
+		expectedBaggage int
+	}{
+		{
+			name:            "missing colon",
+			correlationValue: "key1value1,key2:value2",
+			expectedBaggage: 1, // Only key2:value2 should be parsed
+		},
+		{
+			name:            "empty pairs",
+			correlationValue: "key1:value1,,key2:value2",
+			expectedBaggage: 2, // Empty pair should be skipped
+		},
+		{
+			name:            "invalid URL encoding",
+			correlationValue: "key1:value1,key%ZZ:value2",
+			expectedBaggage: 1, // Only key1:value1 should be parsed
+		},
+		{
+			name:            "completely malformed",
+			correlationValue: "not-correlation-data",
+			expectedBaggage: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			carrier.Set(sw8CorrelationHeader, tc.correlationValue)
+			
+			ctx := p.Extract(context.Background(), carrier)
+			
+			// Verify span context is still extracted
+			sc := trace.SpanContextFromContext(ctx)
+			assert.True(t, sc.IsValid())
+			
+			// Verify baggage handling
+			bags := baggage.FromContext(ctx)
+			assert.Equal(t, tc.expectedBaggage, bags.Len())
+		})
+	}
 }
