@@ -48,6 +48,7 @@ Where:
 - ✅ Sampling flag propagation (0/1 format)
 - ✅ Round-trip compatibility
 - ✅ Error handling for malformed headers
+- ✅ Configurable service information (service name, instance, endpoint, target address)
 - ✅ Proper trace ID and span ID handling
 
 ### Future Enhancements
@@ -56,6 +57,8 @@ Where:
 - [ ] SW8-X extension header support for advanced features
 
 ## Usage
+
+### Basic Usage
 
 ```go
 import "go.opentelemetry.io/contrib/propagators/skywalking"
@@ -70,6 +73,36 @@ otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
     propagation.Baggage{},
 ))
 ```
+
+### Configured Usage
+
+To provide service information instead of using "unknown" values:
+
+```go
+import "go.opentelemetry.io/contrib/propagators/skywalking"
+
+// Create configured propagator with service information
+propagator := skywalking.New(
+    skywalking.WithServiceName("my-service"),
+    skywalking.WithServiceInstance("instance-1"),
+    skywalking.WithEndpoint("/api/users"),
+    skywalking.WithTargetAddress("downstream:8080"),
+)
+
+// Use with OpenTelemetry
+otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+    propagator,
+    propagation.TraceContext{},
+    propagation.Baggage{},
+))
+```
+
+### Configuration Options
+
+- `WithServiceName(string)`: Sets the service name in the sw8 header (default: "unknown")
+- `WithServiceInstance(string)`: Sets the service instance in the sw8 header (default: "unknown")  
+- `WithEndpoint(string)`: Sets the endpoint in the sw8 header (default: "unknown")
+- `WithTargetAddress(string)`: Sets the target address in the sw8 header (default: "unknown")
 
 ## Testing
 

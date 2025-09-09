@@ -184,3 +184,72 @@ func BenchmarkSkyWalkingPropagator_Extract(b *testing.B) {
 		p.Extract(context.Background(), carrier)
 	}
 }
+
+// Test configuration options.
+func TestSkyWalkingPropagator_New(t *testing.T) {
+	// Test New function with options
+	p := New(
+		WithServiceName("test-service"),
+		WithServiceInstance("test-instance"),
+		WithEndpoint("test-endpoint"),
+		WithTargetAddress("127.0.0.1:8080"),
+	)
+
+	assert.Equal(t, "test-service", p.serviceName)
+	assert.Equal(t, "test-instance", p.serviceInstance)
+	assert.Equal(t, "test-endpoint", p.endpoint)
+	assert.Equal(t, "127.0.0.1:8080", p.targetAddress)
+}
+
+func TestSkyWalkingPropagator_New_DefaultValues(t *testing.T) {
+	// Test New function with no options uses defaults
+	p := New()
+
+	assert.Equal(t, unknownServiceName, p.serviceName)
+	assert.Equal(t, unknownServiceInstance, p.serviceInstance)
+	assert.Equal(t, unknownEndpoint, p.endpoint)
+	assert.Equal(t, unknownAddress, p.targetAddress)
+}
+
+func TestSkyWalkingPropagator_ConfiguredInject(t *testing.T) {
+	p := New(
+		WithServiceName("my-service"),
+		WithServiceInstance("my-instance"),
+		WithEndpoint("/api/test"),
+		WithTargetAddress("downstream:9090"),
+	)
+	carrier := make(propagation.MapCarrier)
+
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+	ctx := trace.ContextWithRemoteSpanContext(context.Background(), sc)
+
+	p.Inject(ctx, carrier)
+
+	sw8Value := carrier.Get(sw8Header)
+	assert.NotEmpty(t, sw8Value, "sw8 header should be set")
+
+	// Parse the sw8 header to verify configured values are used
+	fields := strings.Split(sw8Value, "-")
+	require.Len(t, fields, 8, "sw8 header should have 8 fields")
+
+	// Check that configured values are properly base64 encoded in the header
+	serviceBytes, err := base64.StdEncoding.DecodeString(fields[4])
+	require.NoError(t, err)
+	assert.Equal(t, "my-service", string(serviceBytes))
+
+	instanceBytes, err := base64.StdEncoding.DecodeString(fields[5])
+	require.NoError(t, err)
+	assert.Equal(t, "my-instance", string(instanceBytes))
+
+	endpointBytes, err := base64.StdEncoding.DecodeString(fields[6])
+	require.NoError(t, err)
+	assert.Equal(t, "/api/test", string(endpointBytes))
+
+	addressBytes, err := base64.StdEncoding.DecodeString(fields[7])
+	require.NoError(t, err)
+	assert.Equal(t, "downstream:9090", string(addressBytes))
+}

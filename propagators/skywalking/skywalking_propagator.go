@@ -52,15 +52,75 @@ var (
 // This propagator extracts and injects trace context using SkyWalking v3 headers.
 // The sw8 header contains trace context information, while sw8-correlation can
 // contain additional correlation data.
-type Propagator struct{}
+type Propagator struct {
+	serviceName     string
+	serviceInstance string
+	endpoint        string
+	targetAddress   string
+}
 
 var _ propagation.TextMapPropagator = &Propagator{}
+
+// Option configures the SkyWalking propagator.
+type Option interface {
+	apply(*Propagator)
+}
+
+type optionFunc func(*Propagator)
+
+func (fn optionFunc) apply(p *Propagator) {
+	fn(p)
+}
+
+// WithServiceName sets the service name used in the sw8 header.
+func WithServiceName(serviceName string) Option {
+	return optionFunc(func(p *Propagator) {
+		p.serviceName = serviceName
+	})
+}
+
+// WithServiceInstance sets the service instance used in the sw8 header.
+func WithServiceInstance(serviceInstance string) Option {
+	return optionFunc(func(p *Propagator) {
+		p.serviceInstance = serviceInstance
+	})
+}
+
+// WithEndpoint sets the endpoint used in the sw8 header.
+func WithEndpoint(endpoint string) Option {
+	return optionFunc(func(p *Propagator) {
+		p.endpoint = endpoint
+	})
+}
+
+// WithTargetAddress sets the target address used in the sw8 header.
+func WithTargetAddress(targetAddress string) Option {
+	return optionFunc(func(p *Propagator) {
+		p.targetAddress = targetAddress
+	})
+}
+
+// New creates a new SkyWalking propagator with the provided options.
+func New(opts ...Option) *Propagator {
+	p := &Propagator{
+		serviceName:     unknownServiceName,
+		serviceInstance: unknownServiceInstance,
+		endpoint:        unknownEndpoint,
+		targetAddress:   unknownAddress,
+	}
+	
+	for _, opt := range opts {
+		opt.apply(p)
+	}
+	
+	return p
+}
 
 // Inject injects the trace context into the carrier using SkyWalking headers.
 //
 // This implementation follows the SkyWalking v3 specification for the sw8 header format:
 // sw8: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
-func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
+func (p Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
 		return
@@ -83,6 +143,24 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 		parentSpanID = -parentSpanID
 	}
 
+	// Use configured values or fall back to defaults
+	serviceName := p.serviceName
+	if serviceName == "" {
+		serviceName = unknownServiceName
+	}
+	serviceInstance := p.serviceInstance
+	if serviceInstance == "" {
+		serviceInstance = unknownServiceInstance
+	}
+	endpoint := p.endpoint
+	if endpoint == "" {
+		endpoint = unknownEndpoint
+	}
+	targetAddress := p.targetAddress
+	if targetAddress == "" {
+		targetAddress = unknownAddress
+	}
+
 	// Build sw8 header according to SkyWalking v3 specification  
 	// Format: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 	sw8Value := strings.Join([]string{
@@ -90,10 +168,10 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 		base64.StdEncoding.EncodeToString([]byte(sc.TraceID().String())),  // Field 1: trace ID (base64 encoded hex string)
 		base64.StdEncoding.EncodeToString([]byte(sc.SpanID().String())),   // Field 2: parent trace segment ID (base64 encoded hex string)
 		strconv.FormatInt(parentSpanID, 10),                               // Field 3: parent span ID (integer)
-		base64.StdEncoding.EncodeToString([]byte(unknownServiceName)),     // Field 4: parent service (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(unknownServiceInstance)), // Field 5: parent service instance (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(unknownEndpoint)),        // Field 6: parent endpoint (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(unknownAddress)),         // Field 7: target address (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(serviceName)),            // Field 4: parent service (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(serviceInstance)),        // Field 5: parent service instance (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(endpoint)),               // Field 6: parent endpoint (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(targetAddress)),          // Field 7: target address (base64 encoded)
 	}, fieldSeparator)
 
 	carrier.Set(sw8Header, sw8Value)
@@ -102,7 +180,7 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 // Extract extracts the trace context from the carrier if it contains SkyWalking headers.
 //
 // This implementation follows the SkyWalking v3 specification for parsing the sw8 header.
-func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+func (p Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8Value := carrier.Get(sw8Header)
 	if sw8Value == "" {
 		return ctx
@@ -179,6 +257,6 @@ func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 }
 
 // Fields returns the keys whose values are set with Inject.
-func (Propagator) Fields() []string {
+func (p Propagator) Fields() []string {
 	return []string{sw8Header, sw8CorrelationHeader}
 }
