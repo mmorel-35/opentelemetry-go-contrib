@@ -15,15 +15,15 @@ import (
 )
 
 const (
-	// SkyWalking v8 headers.
+	// SkyWalking v3 headers.
 	sw8Header            = "sw8"
 	sw8CorrelationHeader = "sw8-correlation"
 
 	// Header field separator.
 	fieldSeparator = "-"
 
-	// SW8 header format (based on SkyWalking v8 specification):
-	// sw8: {sample-flag}-{trace-id}-{segment-id}-{span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{address-used-at-client}
+	// SW8 header format (based on SkyWalking v3 specification):
+	// sw8: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 	expectedSw8Fields = 8
 
 	// Sample flags.
@@ -49,7 +49,7 @@ var (
 
 // SkyWalking implements the SkyWalking propagator.
 //
-// This propagator extracts and injects trace context using SkyWalking v8 headers.
+// This propagator extracts and injects trace context using SkyWalking v3 headers.
 // The sw8 header contains trace context information, while sw8-correlation can
 // contain additional correlation data.
 type SkyWalking struct{}
@@ -58,41 +58,50 @@ var _ propagation.TextMapPropagator = &SkyWalking{}
 
 // Inject injects the trace context into the carrier using SkyWalking headers.
 //
-// This implementation follows the SkyWalking v8 specification for the sw8 header format:
-// sw8: {sample-flag}-{trace-id}-{segment-id}-{span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{address-used-at-client}
+// This implementation follows the SkyWalking v3 specification for the sw8 header format:
+// sw8: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 func (SkyWalking) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
 		return
 	}
 
-	// Determine sample flag
+	// Determine sample flag according to spec: 0 or 1
 	sampleFlag := sampleFlagNotSampled
 	if sc.IsSampled() {
 		sampleFlag = sampleFlagSampled
 	}
 
-	// Build sw8 header according to specification
-	// Format: {sample-flag}-{trace-id}-{segment-id}-{span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{address-used-at-client}
+	// Convert span ID to integer for field 3 (parent span ID)
+	// Use the span ID's lower 64 bits as an integer, but ensure it's not negative
+	var parentSpanID int64
+	for i := 0; i < 8; i++ {
+		parentSpanID = (parentSpanID << 8) | int64(sc.SpanID()[i])
+	}
+	// Ensure positive value
+	if parentSpanID < 0 {
+		parentSpanID = -parentSpanID
+	}
+
+	// Build sw8 header according to SkyWalking v3 specification  
+	// Format: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 	sw8Value := strings.Join([]string{
-		sampleFlag, // Field 0: sample flag
-		base64.StdEncoding.EncodeToString([]byte(sc.TraceID().String())),  // Field 1: trace ID (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(sc.SpanID().String())),   // Field 2: segment ID (using span ID, base64 encoded)
-		strconv.Itoa(int(sc.SpanID()[7])),                                 // Field 3: span ID (as integer)
+		sampleFlag, // Field 0: sample (0 or 1)
+		base64.StdEncoding.EncodeToString([]byte(sc.TraceID().String())),  // Field 1: trace ID (base64 encoded hex string)
+		base64.StdEncoding.EncodeToString([]byte(sc.SpanID().String())),   // Field 2: parent trace segment ID (base64 encoded hex string)
+		strconv.FormatInt(parentSpanID, 10),                               // Field 3: parent span ID (integer)
 		base64.StdEncoding.EncodeToString([]byte(unknownServiceName)),     // Field 4: parent service (base64 encoded)
 		base64.StdEncoding.EncodeToString([]byte(unknownServiceInstance)), // Field 5: parent service instance (base64 encoded)
 		base64.StdEncoding.EncodeToString([]byte(unknownEndpoint)),        // Field 6: parent endpoint (base64 encoded)
-		base64.StdEncoding.EncodeToString([]byte(unknownAddress)),         // Field 7: address used at client (base64 encoded)
+		base64.StdEncoding.EncodeToString([]byte(unknownAddress)),         // Field 7: target address (base64 encoded)
 	}, fieldSeparator)
 
 	carrier.Set(sw8Header, sw8Value)
-
-	// TODO: Handle sw8-correlation header for baggage/correlation context if needed
 }
 
 // Extract extracts the trace context from the carrier if it contains SkyWalking headers.
 //
-// This implementation follows the SkyWalking v8 specification for parsing the sw8 header.
+// This implementation follows the SkyWalking v3 specification for parsing the sw8 header.
 func (SkyWalking) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8Value := carrier.Get(sw8Header)
 	if sw8Value == "" {
@@ -109,18 +118,18 @@ func (SkyWalking) Extract(ctx context.Context, carrier propagation.TextMapCarrie
 
 // extractFromSw8 extracts trace context from sw8 header value.
 //
-// SW8 header format: {sample-flag}-{trace-id}-{segment-id}-{span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{address-used-at-client}.
+// SW8 header format: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 	fields := strings.Split(sw8Value, fieldSeparator)
 	if len(fields) < expectedSw8Fields {
 		return empty, errInsufficientFields
 	}
 
-	// Parse sample flag (field 0)
+	// Parse sample flag (field 0): 0 or 1
 	sampleFlag := fields[0]
 	isSampled := sampleFlag == sampleFlagSampled
 
-	// Parse trace ID (field 1, base64 encoded)
+	// Parse trace ID (field 1, base64 encoded hex string)
 	traceIDBytes, err := base64.StdEncoding.DecodeString(fields[1])
 	if err != nil {
 		return empty, errBase64Decode
@@ -135,7 +144,7 @@ func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 		return empty, errInvalidTraceID
 	}
 
-	// Parse segment ID (field 2, base64 encoded) - we'll use this to derive the span ID
+	// Parse parent trace segment ID (field 2, base64 encoded hex string) - use this as span ID for OpenTelemetry
 	segmentIDBytes, err := base64.StdEncoding.DecodeString(fields[2])
 	if err != nil {
 		return empty, errBase64Decode
@@ -150,8 +159,9 @@ func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 		return empty, errInvalidSpanID
 	}
 
-	// Note: field 3 is the span ID as integer, but we use the segment ID (field 2) for OpenTelemetry span ID
-	// Fields 4-7 contain service information that we don't currently map to OpenTelemetry context
+	// Note: field 3 is the parent span ID as integer
+	// Fields 4-7 contain service information (parent service, parent service instance, parent endpoint, target address)
+	// These are not directly mapped to OpenTelemetry span context
 
 	// Build span context
 	var flags trace.TraceFlags
