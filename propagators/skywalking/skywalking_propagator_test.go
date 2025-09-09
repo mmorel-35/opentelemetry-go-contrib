@@ -21,11 +21,11 @@ var (
 )
 
 func TestSkyWalkingPropagator_Interface(_ *testing.T) {
-	var _ propagation.TextMapPropagator = &SkyWalking{}
+	var _ propagation.TextMapPropagator = &Propagator{}
 }
 
 func TestSkyWalkingPropagator_Fields(t *testing.T) {
-	p := SkyWalking{}
+	p := Propagator{}
 	fields := p.Fields()
 
 	assert.Contains(t, fields, sw8Header)
@@ -34,7 +34,7 @@ func TestSkyWalkingPropagator_Fields(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Inject_EmptyContext(t *testing.T) {
-	p := SkyWalking{}
+	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
 
 	// Inject with empty context should not set any headers
@@ -44,7 +44,7 @@ func TestSkyWalkingPropagator_Inject_EmptyContext(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Inject_ValidContext(t *testing.T) {
-	p := SkyWalking{}
+	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -68,7 +68,7 @@ func TestSkyWalkingPropagator_Inject_ValidContext(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Extract_EmptyCarrier(t *testing.T) {
-	p := SkyWalking{}
+	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
 
 	ctx := p.Extract(context.Background(), carrier)
@@ -78,7 +78,7 @@ func TestSkyWalkingPropagator_Extract_EmptyCarrier(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Extract_InvalidHeader(t *testing.T) {
-	p := SkyWalking{}
+	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
 
 	// Set an invalid sw8 header
@@ -91,7 +91,7 @@ func TestSkyWalkingPropagator_Extract_InvalidHeader(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_RoundTrip(t *testing.T) {
-	p := SkyWalking{}
+	p := Propagator{}
 
 	// Create a span context
 	originalSC := trace.NewSpanContext(trace.SpanContextConfig{
@@ -121,7 +121,7 @@ func TestSkyWalkingPropagator_RoundTrip(t *testing.T) {
 
 // TestSkyWalkingPropagator_ExtractWithMinimalHeader tests extraction with a minimal valid header.
 func TestSkyWalkingPropagator_ExtractWithMinimalHeader(t *testing.T) {
-	p := SkyWalking{}
+	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
 
 	// Create a minimal valid sw8 header in the correct format
@@ -149,7 +149,7 @@ func TestSkyWalkingPropagator_ExtractWithMinimalHeader(t *testing.T) {
 
 // Benchmark tests.
 func BenchmarkSkyWalkingPropagator_Inject(b *testing.B) {
-	p := SkyWalking{}
+	p := Propagator{}
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    traceID,
 		SpanID:     spanID,
@@ -165,7 +165,7 @@ func BenchmarkSkyWalkingPropagator_Inject(b *testing.B) {
 }
 
 func BenchmarkSkyWalkingPropagator_Extract(b *testing.B) {
-	p := SkyWalking{}
+	p := Propagator{}
 	carrier := make(propagation.MapCarrier)
 	sw8Value := strings.Join([]string{
 		"1", // sample flag

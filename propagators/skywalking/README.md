@@ -61,7 +61,7 @@ Where:
 import "go.opentelemetry.io/contrib/propagators/skywalking"
 
 // Create propagator
-propagator := skywalking.SkyWalking{}
+propagator := skywalking.Propagator{}
 
 // Use with OpenTelemetry
 otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(

@@ -15,9 +15,9 @@ import (
 	"go.opentelemetry.io/contrib/propagators/skywalking"
 )
 
-func ExampleSkyWalking() {
+func ExamplePropagator() {
 	// Create a new SkyWalking propagator
-	skyWalkingPropagator := skywalking.SkyWalking{}
+	skyWalkingPropagator := skywalking.Propagator{}
 
 	// Set up the propagator in the global provider
 	otel.SetTextMapPropagator(

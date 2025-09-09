@@ -47,20 +47,20 @@ var (
 	errBase64Decode       = errors.New("failed to decode base64 field")
 )
 
-// SkyWalking implements the SkyWalking propagator.
+// Propagator implements the SkyWalking propagator.
 //
 // This propagator extracts and injects trace context using SkyWalking v3 headers.
 // The sw8 header contains trace context information, while sw8-correlation can
 // contain additional correlation data.
-type SkyWalking struct{}
+type Propagator struct{}
 
-var _ propagation.TextMapPropagator = &SkyWalking{}
+var _ propagation.TextMapPropagator = &Propagator{}
 
 // Inject injects the trace context into the carrier using SkyWalking headers.
 //
 // This implementation follows the SkyWalking v3 specification for the sw8 header format:
 // sw8: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
-func (SkyWalking) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
+func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
 		return
@@ -102,7 +102,7 @@ func (SkyWalking) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 // Extract extracts the trace context from the carrier if it contains SkyWalking headers.
 //
 // This implementation follows the SkyWalking v3 specification for parsing the sw8 header.
-func (SkyWalking) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8Value := carrier.Get(sw8Header)
 	if sw8Value == "" {
 		return ctx
@@ -179,6 +179,6 @@ func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 }
 
 // Fields returns the keys whose values are set with Inject.
-func (SkyWalking) Fields() []string {
+func (Propagator) Fields() []string {
 	return []string{sw8Header, sw8CorrelationHeader}
 }
