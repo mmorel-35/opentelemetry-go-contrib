@@ -41,10 +41,6 @@ const (
 	// SW8-Correlation header format separators.
 	correlationSeparator   = ","
 	correlationKVSeparator = ":"
-
-	// SW8-X extension header fields.
-	sw8XTracingMode  = "0" // Default tracing mode (normal analysis)
-	sw8XSkipAnalysis = "1" // Skip analysis mode
 )
 
 var (
@@ -311,14 +307,13 @@ func extractCorrelation(ctx context.Context, carrier propagation.TextMapCarrier)
 // injectSw8Extension injects SW8-X extension header with tracing mode and optional timestamp.
 //
 // The sw8-x header format: {tracing-mode}-{timestamp}
-// - Field 1: Tracing Mode (empty/0 = normal, 1 = skip analysis)
+// - Field 1: Tracing Mode (0 = normal, 1 = skip analysis)
 // - Field 2: Timestamp for async RPC latency calculation (optional)
 //
-// Currently uses default tracing mode (normal analysis) without timestamp.
-func injectSw8Extension(_ context.Context, carrier propagation.TextMapCarrier) {
-	// Use default tracing mode (normal analysis)
-	// Future enhancement: check context for skip analysis flag
-	sw8XValue := sw8XTracingMode
+// Reads tracing mode from context using TracingModeFromContext().
+func injectSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier) {
+	// Get tracing mode from context, defaults to normal mode
+	sw8XValue := tracingModeFromContext(ctx)
 
 	// Future enhancement: add timestamp for async RPC scenarios
 	// sw8XValue += fieldSeparator + timestamp
@@ -329,8 +324,7 @@ func injectSw8Extension(_ context.Context, carrier propagation.TextMapCarrier) {
 // extractSw8Extension extracts SW8-X extension header information.
 //
 // The sw8-x header contains tracing mode and optional timestamp for advanced features.
-// Currently extracts and validates the header but doesn't apply special handling.
-// Future enhancements can use this information for skip analysis or latency calculation.
+// Stores the tracing mode in context using WithTracingMode().
 func extractSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8XValue := carrier.Get(sw8ExtensionHeader)
 	if sw8XValue == "" {
@@ -345,11 +339,8 @@ func extractSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier
 	// Parse tracing mode (field 0)
 	tracingMode := fields[0]
 
-	// Future enhancement: handle skip analysis mode
-	if tracingMode == sw8XSkipAnalysis { //nolint:revive,staticcheck // ignore for future enhancement
-		// Set skip analysis flag in context
-		// This would require OpenTelemetry context integration
-	}
+	// Store tracing mode in context
+	ctx = withTracingMode(ctx, tracingMode)
 
 	// Future enhancement: parse timestamp (field 1) for async RPC latency
 	if len(fields) > 1 && fields[1] != "" { //nolint:revive,staticcheck // ignore for future enhancement

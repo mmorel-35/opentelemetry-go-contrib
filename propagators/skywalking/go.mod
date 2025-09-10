@@ -3,6 +3,7 @@ module go.opentelemetry.io/contrib/propagators/skywalking
 go 1.24.0
 
 require (
+	github.com/google/go-cmp v0.7.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.38.0
 	go.opentelemetry.io/otel/trace v1.38.0

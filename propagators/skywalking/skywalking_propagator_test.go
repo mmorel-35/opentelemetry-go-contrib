@@ -459,15 +459,25 @@ func TestSkyWalkingPropagator_Sw8X_Extension(t *testing.T) {
 		TraceFlags: trace.FlagsSampled,
 	})
 
+	// Test injection with default tracing mode
 	ctx := trace.ContextWithSpanContext(context.Background(), sc)
 
 	// Inject headers
 	p.Inject(ctx, carrier)
 
-	// Verify SW8-X extension header is set
+	// Verify SW8-X extension header is set with default mode
 	sw8XValue := carrier.Get(sw8ExtensionHeader)
 	assert.NotEmpty(t, sw8XValue)
 	assert.Equal(t, "0", sw8XValue) // Default tracing mode
+
+	// Test injection with skip analysis mode
+	carrier = make(propagation.MapCarrier)
+	ctx = WithTracingMode(ctx, TracingModeSkipAnalysis)
+	p.Inject(ctx, carrier)
+
+	// Verify SW8-X extension header is set with skip analysis mode
+	sw8XValue = carrier.Get(sw8ExtensionHeader)
+	assert.Equal(t, "1", sw8XValue) // Skip analysis mode
 
 	// Test extraction with SW8-X header
 	extractCarrier := make(propagation.MapCarrier)
@@ -481,4 +491,8 @@ func TestSkyWalkingPropagator_Sw8X_Extension(t *testing.T) {
 	assert.True(t, extractedSC.IsValid())
 	assert.Equal(t, traceID, extractedSC.TraceID())
 	assert.Equal(t, spanID, extractedSC.SpanID())
+
+	// Verify tracing mode is extracted and stored in context
+	extractedMode := TracingModeFromContext(extractedCtx)
+	assert.Equal(t, TracingModeSkipAnalysis, extractedMode)
 }
