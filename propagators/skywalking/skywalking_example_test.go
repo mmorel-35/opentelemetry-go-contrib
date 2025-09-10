@@ -16,9 +16,9 @@ import (
 	"go.opentelemetry.io/contrib/propagators/skywalking"
 )
 
-func ExamplePropagator() {
+func ExampleSkywalking() {
 	// Create a new SkyWalking propagator
-	skyWalkingPropagator := skywalking.Propagator{}
+	skyWalkingPropagator := skywalking.Skywalking{}
 
 	// Set up the propagator in the global provider
 	otel.SetTextMapPropagator(
@@ -67,15 +67,15 @@ func ExamplePropagator() {
 	// Trace ID preserved: true
 }
 
-func ExamplePropagator_correlation() {
+func ExampleSkywalking_correlation() {
 	// Create a new SkyWalking propagator
-	skyWalkingPropagator := skywalking.Propagator{}
+	skyWalkingPropagator := skywalking.Skywalking{}
 
 	// Create correlation data using baggage
 	member1, _ := baggage.NewMember("service.name", "web-service")
 	member2, _ := baggage.NewMember("user.id", "user123")
 	member3, _ := baggage.NewMember("request.type", "api")
-	
+
 	bags, err := baggage.New(member1, member2, member3)
 	if err != nil {
 		log.Fatal(err)

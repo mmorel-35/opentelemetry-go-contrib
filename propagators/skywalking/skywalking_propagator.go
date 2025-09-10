@@ -39,11 +39,11 @@ const (
 	unknownAddress         = "unknown"
 
 	// SW8-Correlation header format separators.
-	correlationSeparator = ","
+	correlationSeparator   = ","
 	correlationKVSeparator = ":"
 
 	// SW8-X extension header fields.
-	sw8XTracingMode = "0"  // Default tracing mode (normal analysis)
+	sw8XTracingMode  = "0" // Default tracing mode (normal analysis)
 	sw8XSkipAnalysis = "1" // Skip analysis mode
 )
 
@@ -55,10 +55,9 @@ var (
 	errInvalidSpanID      = errors.New("invalid span ID in sw8 header")
 	errInsufficientFields = errors.New("insufficient fields in sw8 header")
 	errBase64Decode       = errors.New("failed to decode base64 field")
-	errInvalidCorrelation = errors.New("invalid correlation data")
 )
 
-// Propagator implements the SkyWalking propagator.
+// Skywalking implements the SkyWalking propagator.
 //
 // This propagator extracts and injects trace context using SkyWalking v3 headers.
 // The sw8 header contains trace context information, while sw8-correlation can
@@ -66,9 +65,9 @@ var (
 //
 // For service metadata (service name, service instance, endpoint, target address),
 // the propagator uses default "unknown" values as per the stateless design.
-type Propagator struct{}
+type Skywalking struct{}
 
-var _ propagation.TextMapPropagator = &Propagator{}
+var _ propagation.TextMapPropagator = &Skywalking{}
 
 // Inject injects the trace context into the carrier using SkyWalking headers.
 //
@@ -77,7 +76,7 @@ var _ propagation.TextMapPropagator = &Propagator{}
 //
 // For service metadata fields (4-7), the propagator uses default "unknown" values.
 // Correlation data from baggage is injected into the sw8-correlation header.
-func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
+func (Skywalking) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
 		return
@@ -92,7 +91,7 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 	// Convert span ID to integer for field 3 (parent span ID)
 	// Use the span ID's lower 64 bits as an integer, but ensure it's not negative
 	var parentSpanID int64
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		parentSpanID = (parentSpanID << 8) | int64(sc.SpanID()[i])
 	}
 	// Ensure positive value
@@ -100,7 +99,7 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 		parentSpanID = -parentSpanID
 	}
 
-	// Build sw8 header according to SkyWalking v3 specification  
+	// Build sw8 header according to SkyWalking v3 specification
 	// Format: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
 	sw8Value := strings.Join([]string{
 		sampleFlag, // Field 0: sample (0 or 1)
@@ -126,7 +125,7 @@ func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier
 //
 // This implementation follows the SkyWalking v3 specification for parsing the sw8 header
 // and extracts correlation data from the sw8-correlation header into baggage.
-func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+func (Skywalking) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8Value := carrier.Get(sw8Header)
 	if sw8Value == "" {
 		return ctx
@@ -150,7 +149,7 @@ func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrie
 
 // extractFromSw8 extracts trace context from sw8 header value.
 //
-// SW8 header format: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}
+// SW8 header format: {sample}-{trace-id}-{parent-trace-segment-id}-{parent-span-id}-{parent-service}-{parent-service-instance}-{parent-endpoint}-{target-address}.
 func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 	fields := strings.Split(sw8Value, fieldSeparator)
 	if len(fields) < expectedSw8Fields {
@@ -211,7 +210,7 @@ func extractFromSw8(sw8Value string) (trace.SpanContext, error) {
 }
 
 // Fields returns the keys whose values are set with Inject.
-func (Propagator) Fields() []string {
+func (Skywalking) Fields() []string {
 	return []string{sw8Header, sw8CorrelationHeader, sw8ExtensionHeader}
 }
 
@@ -220,7 +219,7 @@ func (Propagator) Fields() []string {
 // The sw8-correlation header format follows the official SkyWalking v1 specification:
 // base64(string key):base64(string value) pairs separated by commas.
 // Format: "base64(key1):base64(value1),base64(key2):base64(value2)"
-// 
+//
 // Limits: Maximum 3 keys, each value maximum 128 bytes (before encoding).
 func injectCorrelation(ctx context.Context, carrier propagation.TextMapCarrier) {
 	bags := baggage.FromContext(ctx)
@@ -235,12 +234,12 @@ func injectCorrelation(ctx context.Context, carrier propagation.TextMapCarrier) 
 		if count >= 3 {
 			break
 		}
-		
+
 		// Enforce value length limit of 128 bytes as per specification
 		if len(member.Value()) > 128 {
 			continue // Skip values that exceed the limit
 		}
-		
+
 		// Base64 encode both key and value as per official specification
 		encodedKey := base64.StdEncoding.EncodeToString([]byte(member.Key()))
 		encodedValue := base64.StdEncoding.EncodeToString([]byte(member.Value()))
@@ -316,14 +315,14 @@ func extractCorrelation(ctx context.Context, carrier propagation.TextMapCarrier)
 // - Field 2: Timestamp for async RPC latency calculation (optional)
 //
 // Currently uses default tracing mode (normal analysis) without timestamp.
-func injectSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier) {
+func injectSw8Extension(_ context.Context, carrier propagation.TextMapCarrier) {
 	// Use default tracing mode (normal analysis)
 	// Future enhancement: check context for skip analysis flag
 	sw8XValue := sw8XTracingMode
-	
+
 	// Future enhancement: add timestamp for async RPC scenarios
 	// sw8XValue += fieldSeparator + timestamp
-	
+
 	carrier.Set(sw8ExtensionHeader, sw8XValue)
 }
 
@@ -345,15 +344,15 @@ func extractSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier
 
 	// Parse tracing mode (field 0)
 	tracingMode := fields[0]
-	
+
 	// Future enhancement: handle skip analysis mode
-	if tracingMode == sw8XSkipAnalysis {
+	if tracingMode == sw8XSkipAnalysis { //nolint:revive,staticcheck // ignore for future enhancement
 		// Set skip analysis flag in context
 		// This would require OpenTelemetry context integration
 	}
-	
+
 	// Future enhancement: parse timestamp (field 1) for async RPC latency
-	if len(fields) > 1 && fields[1] != "" {
+	if len(fields) > 1 && fields[1] != "" { //nolint:revive,staticcheck // ignore for future enhancement
 		// Parse timestamp and calculate latency
 		// Store in context or span attributes
 	}

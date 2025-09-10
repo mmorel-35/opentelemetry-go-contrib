@@ -22,11 +22,11 @@ var (
 )
 
 func TestSkyWalkingPropagator_Interface(_ *testing.T) {
-	var _ propagation.TextMapPropagator = &Propagator{}
+	var _ propagation.TextMapPropagator = &Skywalking{}
 }
 
 func TestSkyWalkingPropagator_Fields(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	fields := p.Fields()
 
 	assert.Contains(t, fields, sw8Header)
@@ -36,7 +36,7 @@ func TestSkyWalkingPropagator_Fields(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Inject_EmptyContext(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Inject with empty context should not set any headers
@@ -46,7 +46,7 @@ func TestSkyWalkingPropagator_Inject_EmptyContext(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Inject_ValidContext(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -70,7 +70,7 @@ func TestSkyWalkingPropagator_Inject_ValidContext(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Extract_EmptyCarrier(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	ctx := p.Extract(context.Background(), carrier)
@@ -80,7 +80,7 @@ func TestSkyWalkingPropagator_Extract_EmptyCarrier(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Extract_InvalidHeader(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Set an invalid sw8 header
@@ -93,7 +93,7 @@ func TestSkyWalkingPropagator_Extract_InvalidHeader(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_RoundTrip(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 
 	// Create a span context
 	originalSC := trace.NewSpanContext(trace.SpanContextConfig{
@@ -123,7 +123,7 @@ func TestSkyWalkingPropagator_RoundTrip(t *testing.T) {
 
 // TestSkyWalkingPropagator_ExtractWithMinimalHeader tests extraction with a minimal valid header.
 func TestSkyWalkingPropagator_ExtractWithMinimalHeader(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Create a minimal valid sw8 header in the correct format
@@ -151,7 +151,7 @@ func TestSkyWalkingPropagator_ExtractWithMinimalHeader(t *testing.T) {
 
 // Benchmark tests.
 func BenchmarkSkyWalkingPropagator_Inject(b *testing.B) {
-	p := Propagator{}
+	p := Skywalking{}
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    traceID,
 		SpanID:     spanID,
@@ -167,7 +167,7 @@ func BenchmarkSkyWalkingPropagator_Inject(b *testing.B) {
 }
 
 func BenchmarkSkyWalkingPropagator_Extract(b *testing.B) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 	sw8Value := strings.Join([]string{
 		"1", // sample flag
@@ -189,7 +189,7 @@ func BenchmarkSkyWalkingPropagator_Extract(b *testing.B) {
 
 // Test that unknown values are used when no carrier metadata is set.
 func TestSkyWalkingPropagator_InjectWithDefaultValues(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -227,14 +227,14 @@ func TestSkyWalkingPropagator_InjectWithDefaultValues(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Correlation_Inject(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Create baggage with correlation data
 	member1, _ := baggage.NewMember("service.name", "test-service")
 	member2, _ := baggage.NewMember("user.id", "12345")
 	member3, _ := baggage.NewMember("component", "web-server")
-	
+
 	bags, err := baggage.New(member1, member2, member3)
 	require.NoError(t, err)
 
@@ -244,7 +244,7 @@ func TestSkyWalkingPropagator_Correlation_Inject(t *testing.T) {
 		SpanID:     spanID,
 		TraceFlags: trace.FlagsSampled,
 	})
-	
+
 	ctx := trace.ContextWithSpanContext(context.Background(), sc)
 	ctx = baggage.ContextWithBaggage(ctx, bags)
 
@@ -261,21 +261,21 @@ func TestSkyWalkingPropagator_Correlation_Inject(t *testing.T) {
 	pairs := strings.Split(correlationValue, ",")
 	assert.Len(t, pairs, 3)
 
-	// Verify all pairs are present (order may vary)  
+	// Verify all pairs are present (order may vary)
 	pairMap := make(map[string]string)
 	for _, pair := range pairs {
 		kv := strings.SplitN(pair, ":", 2)
 		require.Len(t, kv, 2)
-		
+
 		// Decode BASE64 encoded key and value
 		keyBytes, err := base64.StdEncoding.DecodeString(kv[0])
 		require.NoError(t, err)
 		key := string(keyBytes)
-		
+
 		valueBytes, err := base64.StdEncoding.DecodeString(kv[1])
 		require.NoError(t, err)
 		value := string(valueBytes)
-		
+
 		pairMap[key] = value
 	}
 
@@ -285,22 +285,22 @@ func TestSkyWalkingPropagator_Correlation_Inject(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Correlation_Extract(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Set up valid sw8 header
-	sw8Value := "1-" + base64.StdEncoding.EncodeToString([]byte(traceID.String())) + 
-	           "-" + base64.StdEncoding.EncodeToString([]byte(spanID.String())) +
-	           "-123-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
-	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
-	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
-	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown"))
+	sw8Value := "1-" + base64.StdEncoding.EncodeToString([]byte(traceID.String())) +
+		"-" + base64.StdEncoding.EncodeToString([]byte(spanID.String())) +
+		"-123-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+		"-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+		"-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+		"-" + base64.StdEncoding.EncodeToString([]byte("unknown"))
 	carrier.Set(sw8Header, sw8Value)
 
 	// Set up correlation header with BASE64 encoded values as per specification
 	correlationValue := base64.StdEncoding.EncodeToString([]byte("service.name")) + ":" + base64.StdEncoding.EncodeToString([]byte("test-service")) + "," +
-	                    base64.StdEncoding.EncodeToString([]byte("user.id")) + ":" + base64.StdEncoding.EncodeToString([]byte("12345")) + "," +
-	                    base64.StdEncoding.EncodeToString([]byte("component")) + ":" + base64.StdEncoding.EncodeToString([]byte("web-server"))
+		base64.StdEncoding.EncodeToString([]byte("user.id")) + ":" + base64.StdEncoding.EncodeToString([]byte("12345")) + "," +
+		base64.StdEncoding.EncodeToString([]byte("component")) + ":" + base64.StdEncoding.EncodeToString([]byte("web-server"))
 	carrier.Set(sw8CorrelationHeader, correlationValue)
 
 	ctx := p.Extract(context.Background(), carrier)
@@ -326,8 +326,8 @@ func TestSkyWalkingPropagator_Correlation_Extract(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Correlation_RoundTrip(t *testing.T) {
-	p := Propagator{}
-	
+	p := Skywalking{}
+
 	// Create original context with span and baggage
 	originalSC := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    traceID,
@@ -338,7 +338,7 @@ func TestSkyWalkingPropagator_Correlation_RoundTrip(t *testing.T) {
 	member1, _ := baggage.NewMember("service.name", "test-service")
 	member2, _ := baggage.NewMember("user.id", "12345")
 	member3, _ := baggage.NewMember("component", "web-server")
-	
+
 	originalBags, err := baggage.New(member1, member2, member3)
 	require.NoError(t, err)
 
@@ -369,7 +369,7 @@ func TestSkyWalkingPropagator_Correlation_RoundTrip(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Correlation_EmptyBaggage(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Create context with span but no baggage
@@ -378,7 +378,7 @@ func TestSkyWalkingPropagator_Correlation_EmptyBaggage(t *testing.T) {
 		SpanID:     spanID,
 		TraceFlags: trace.FlagsSampled,
 	})
-	
+
 	ctx := trace.ContextWithSpanContext(context.Background(), sc)
 
 	p.Inject(ctx, carrier)
@@ -391,56 +391,56 @@ func TestSkyWalkingPropagator_Correlation_EmptyBaggage(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Correlation_MalformedHeader(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Set up valid sw8 header
-	sw8Value := "1-" + base64.StdEncoding.EncodeToString([]byte(traceID.String())) + 
-	           "-" + base64.StdEncoding.EncodeToString([]byte(spanID.String())) +
-	           "-123-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
-	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
-	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
-	           "-" + base64.StdEncoding.EncodeToString([]byte("unknown"))
+	sw8Value := "1-" + base64.StdEncoding.EncodeToString([]byte(traceID.String())) +
+		"-" + base64.StdEncoding.EncodeToString([]byte(spanID.String())) +
+		"-123-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+		"-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+		"-" + base64.StdEncoding.EncodeToString([]byte("unknown")) +
+		"-" + base64.StdEncoding.EncodeToString([]byte("unknown"))
 	carrier.Set(sw8Header, sw8Value)
 
 	// Set up malformed correlation headers
 	testCases := []struct {
-		name            string
+		name             string
 		correlationValue string
-		expectedBaggage int
+		expectedBaggage  int
 	}{
 		{
-			name:            "missing colon",
+			name:             "missing colon",
 			correlationValue: "key1value1," + base64.StdEncoding.EncodeToString([]byte("key2")) + ":" + base64.StdEncoding.EncodeToString([]byte("value2")),
-			expectedBaggage: 1, // Only key2:value2 should be parsed
+			expectedBaggage:  1, // Only key2:value2 should be parsed
 		},
 		{
-			name:            "empty pairs",
+			name:             "empty pairs",
 			correlationValue: base64.StdEncoding.EncodeToString([]byte("key1")) + ":" + base64.StdEncoding.EncodeToString([]byte("value1")) + ",," + base64.StdEncoding.EncodeToString([]byte("key2")) + ":" + base64.StdEncoding.EncodeToString([]byte("value2")),
-			expectedBaggage: 2, // Empty pair should be skipped
+			expectedBaggage:  2, // Empty pair should be skipped
 		},
 		{
-			name:            "invalid BASE64 encoding",
+			name:             "invalid BASE64 encoding",
 			correlationValue: base64.StdEncoding.EncodeToString([]byte("key1")) + ":" + base64.StdEncoding.EncodeToString([]byte("value1")) + ",key%ZZ:value2",
-			expectedBaggage: 1, // Only key1:value1 should be parsed
+			expectedBaggage:  1, // Only key1:value1 should be parsed
 		},
 		{
-			name:            "completely malformed",
+			name:             "completely malformed",
 			correlationValue: "not-correlation-data",
-			expectedBaggage: 0,
+			expectedBaggage:  0,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			carrier.Set(sw8CorrelationHeader, tc.correlationValue)
-			
+
 			ctx := p.Extract(context.Background(), carrier)
-			
+
 			// Verify span context is still extracted
 			sc := trace.SpanContextFromContext(ctx)
 			assert.True(t, sc.IsValid())
-			
+
 			// Verify baggage handling
 			bags := baggage.FromContext(ctx)
 			assert.Equal(t, tc.expectedBaggage, bags.Len())
@@ -449,7 +449,7 @@ func TestSkyWalkingPropagator_Correlation_MalformedHeader(t *testing.T) {
 }
 
 func TestSkyWalkingPropagator_Sw8X_Extension(t *testing.T) {
-	p := Propagator{}
+	p := Skywalking{}
 	carrier := make(propagation.MapCarrier)
 
 	// Create valid span context
