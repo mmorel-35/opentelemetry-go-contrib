@@ -9,6 +9,7 @@ type skyWalkingKeyType int
 
 const (
 	tracingModeKey skyWalkingKeyType = iota
+	timestampKey
 )
 
 // Tracing mode constants for SW8-X extension header.
@@ -40,4 +41,26 @@ func tracingModeFromContext(ctx context.Context) string {
 		return mode
 	}
 	return TracingModeNormal
+}
+
+// withTimestamp returns a copy of parent with the timestamp set.
+//
+// The timestamp is used in the SW8-X extension header for transmission
+// latency calculation. It should be set to the current time in milliseconds
+// when sending a request to enable latency measurement.
+func withTimestamp(parent context.Context, timestamp int64) context.Context {
+	return context.WithValue(parent, timestampKey, timestamp)
+}
+
+// timestampFromContext returns the timestamp stored in ctx.
+//
+// If no timestamp is stored in ctx, 0 is returned indicating no timestamp.
+func timestampFromContext(ctx context.Context) int64 {
+	if ctx == nil {
+		return 0
+	}
+	if timestamp, ok := ctx.Value(timestampKey).(int64); ok {
+		return timestamp
+	}
+	return 0
 }

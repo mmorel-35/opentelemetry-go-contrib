@@ -468,7 +468,7 @@ func TestSkyWalkingPropagator_Sw8X_Extension(t *testing.T) {
 	// Verify SW8-X extension header is set with default mode
 	sw8XValue := carrier.Get(sw8ExtensionHeader)
 	assert.NotEmpty(t, sw8XValue)
-	assert.Equal(t, "0", sw8XValue) // Default tracing mode
+	assert.Equal(t, "0- ", sw8XValue) // Default tracing mode with placeholder timestamp
 
 	// Test injection with skip analysis mode
 	carrier = make(propagation.MapCarrier)
@@ -477,12 +477,12 @@ func TestSkyWalkingPropagator_Sw8X_Extension(t *testing.T) {
 
 	// Verify SW8-X extension header is set with skip analysis mode
 	sw8XValue = carrier.Get(sw8ExtensionHeader)
-	assert.Equal(t, "1", sw8XValue) // Skip analysis mode
+	assert.Equal(t, "1- ", sw8XValue) // Skip analysis mode with placeholder timestamp
 
 	// Test extraction with SW8-X header
 	extractCarrier := make(propagation.MapCarrier)
 	extractCarrier.Set(sw8Header, carrier.Get(sw8Header))
-	extractCarrier.Set(sw8ExtensionHeader, "1") // Skip analysis mode
+	extractCarrier.Set(sw8ExtensionHeader, "1- ") // Skip analysis mode with placeholder
 
 	extractedCtx := p.Extract(context.Background(), extractCarrier)
 

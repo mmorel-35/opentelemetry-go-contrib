@@ -310,21 +310,30 @@ func extractCorrelation(ctx context.Context, carrier propagation.TextMapCarrier)
 // - Field 1: Tracing Mode (0 = normal, 1 = skip analysis)
 // - Field 2: Timestamp for async RPC latency calculation (optional)
 //
-// Reads tracing mode from context using TracingModeFromContext().
+// Reads tracing mode and timestamp from context using TracingModeFromContext() and TimestampFromContext().
 func injectSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier) {
 	// Get tracing mode from context, defaults to normal mode
-	sw8XValue := tracingModeFromContext(ctx)
+	tracingMode := tracingModeFromContext(ctx)
 
-	// Future enhancement: add timestamp for async RPC scenarios
-	// sw8XValue += fieldSeparator + timestamp
+	// Get timestamp from context
+	timestamp := timestampFromContext(ctx)
+
+	var sw8XValue string
+	if timestamp > 0 {
+		// Include timestamp if available
+		sw8XValue = tracingMode + fieldSeparator + strconv.FormatInt(timestamp, 10)
+	} else {
+		// Only include tracing mode with placeholder for timestamp (matching Java behavior)
+		sw8XValue = tracingMode + fieldSeparator + " "
+	}
 
 	carrier.Set(sw8ExtensionHeader, sw8XValue)
 }
 
 // extractSw8Extension extracts SW8-X extension header information.
 //
-// The sw8-x header contains tracing mode and optional timestamp for advanced features.
-// Stores the tracing mode in context using WithTracingMode().
+// The sw8-x header contains tracing mode and optional timestamp for transmission latency calculation.
+// Stores the tracing mode in context using WithTracingMode() and timestamp using WithTimestamp().
 func extractSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	sw8XValue := carrier.Get(sw8ExtensionHeader)
 	if sw8XValue == "" {
@@ -338,14 +347,14 @@ func extractSw8Extension(ctx context.Context, carrier propagation.TextMapCarrier
 
 	// Parse tracing mode (field 0)
 	tracingMode := fields[0]
-
-	// Store tracing mode in context
 	ctx = withTracingMode(ctx, tracingMode)
 
-	// Future enhancement: parse timestamp (field 1) for async RPC latency
-	if len(fields) > 1 && fields[1] != "" { //nolint:revive,staticcheck // ignore for future enhancement
-		// Parse timestamp and calculate latency
-		// Store in context or span attributes
+	// Parse timestamp (field 1) for transmission latency calculation
+	if len(fields) > 1 && strings.TrimSpace(fields[1]) != "" {
+		if timestamp, err := strconv.ParseInt(strings.TrimSpace(fields[1]), 10, 64); err == nil {
+			ctx = withTimestamp(ctx, timestamp)
+		}
+		// Ignore parsing errors for malformed timestamps
 	}
 
 	return ctx

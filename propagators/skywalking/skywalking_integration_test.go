@@ -43,7 +43,7 @@ var extractHeaders = []extractTest{
 				"-" + base64.StdEncoding.EncodeToString([]byte("instance")) +
 				"-" + base64.StdEncoding.EncodeToString([]byte("endpoint")) +
 				"-" + base64.StdEncoding.EncodeToString([]byte("target")),
-			"sw8-x": "0",
+			"sw8-x": "0- ",
 		},
 		expected: trace.SpanContextConfig{
 			TraceID:    traceID,
@@ -62,7 +62,7 @@ var extractHeaders = []extractTest{
 				"-" + base64.StdEncoding.EncodeToString([]byte("instance")) +
 				"-" + base64.StdEncoding.EncodeToString([]byte("endpoint")) +
 				"-" + base64.StdEncoding.EncodeToString([]byte("target")),
-			"sw8-x": "1",
+			"sw8-x": "1- ",
 		},
 		expected: trace.SpanContextConfig{
 			TraceID:    traceID,
@@ -115,7 +115,7 @@ var invalidExtractHeaders = []extractTest{
 	{
 		name: "missing sw8 header",
 		headers: map[string]string{
-			"sw8-x": "0",
+			"sw8-x": "0- ",
 		},
 		expected:    trace.SpanContextConfig{},
 		tracingMode: TracingModeNormal,
@@ -149,7 +149,7 @@ var injectHeaders = []injectTest{
 		tracingMode: TracingModeNormal,
 		wantHeaders: map[string]string{
 			"sw8":   "1-", // Should start with sampled flag
-			"sw8-x": "0",
+			"sw8-x": "0- ",
 		},
 	},
 	{
@@ -162,7 +162,7 @@ var injectHeaders = []injectTest{
 		tracingMode: TracingModeSkipAnalysis,
 		wantHeaders: map[string]string{
 			"sw8":   "1-", // Should start with sampled flag
-			"sw8-x": "1",
+			"sw8-x": "1- ",
 		},
 	},
 	{
@@ -175,7 +175,7 @@ var injectHeaders = []injectTest{
 		tracingMode: TracingModeNormal,
 		wantHeaders: map[string]string{
 			"sw8":   "0-", // Should start with not sampled flag
-			"sw8-x": "0",
+			"sw8-x": "0- ",
 		},
 	},
 	{
@@ -192,7 +192,7 @@ var injectHeaders = []injectTest{
 		},
 		wantHeaders: map[string]string{
 			"sw8":             "1-", // Should start with sampled flag
-			"sw8-x":           "0",
+			"sw8-x":           "0- ",
 			"sw8-correlation": "", // Will be validated separately
 		},
 	},
@@ -383,7 +383,7 @@ func TestSkyWalkingCompleteIntegration(t *testing.T) {
 	// Verify all headers are set
 	assert.NotEmpty(t, carrier.Get("sw8"))
 	assert.NotEmpty(t, carrier.Get("sw8-correlation"))
-	assert.Equal(t, "1", carrier.Get("sw8-x")) // Skip analysis mode
+	assert.Equal(t, "1- ", carrier.Get("sw8-x")) // Skip analysis mode with placeholder timestamp
 
 	// Extract from carrier
 	extractedCtx := propagator.Extract(context.Background(), carrier)
@@ -402,4 +402,162 @@ func TestSkyWalkingCompleteIntegration(t *testing.T) {
 	assert.Equal(t, 2, extractedBags.Len())
 	assert.Equal(t, "12345", extractedBags.Member("user.id").Value())
 	assert.Equal(t, "test-service", extractedBags.Member("service.name").Value())
+}
+
+func TestSkyWalkingTimestampIntegration(t *testing.T) {
+	propagator := Skywalking{}
+
+	testCases := []struct {
+		name      string
+		timestamp int64
+		expected  string
+	}{
+		{
+			name:      "no timestamp",
+			timestamp: 0,
+			expected:  "0- ",
+		},
+		{
+			name:      "with timestamp",
+			timestamp: 1602743904804,
+			expected:  "0-1602743904804",
+		},
+		{
+			name:      "with current time",
+			timestamp: 1640995200000,
+			expected:  "0-1640995200000",
+		},
+		{
+			name:      "skip analysis with timestamp",
+			timestamp: 1602743904804,
+			expected:  "1-1602743904804",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create span context
+			sc := trace.NewSpanContext(trace.SpanContextConfig{
+				TraceID:    traceID,
+				SpanID:     spanID,
+				TraceFlags: trace.FlagsSampled,
+			})
+
+			ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+			// Set tracing mode based on test expectation
+			if strings.HasPrefix(tc.expected, "1") {
+				ctx = WithTracingMode(ctx, TracingModeSkipAnalysis)
+			}
+
+			// Set timestamp if provided
+			if tc.timestamp > 0 {
+				ctx = WithTimestamp(ctx, tc.timestamp)
+			}
+
+			// Inject
+			carrier := make(propagation.MapCarrier)
+			propagator.Inject(ctx, carrier)
+
+			// Verify SW8-X header format
+			sw8XValue := carrier.Get("sw8-x")
+			assert.Equal(t, tc.expected, sw8XValue)
+
+			// Extract and verify round trip
+			extractedCtx := propagator.Extract(context.Background(), carrier)
+
+			// Verify timestamp round trip
+			extractedTimestamp := TimestampFromContext(extractedCtx)
+			assert.Equal(t, tc.timestamp, extractedTimestamp)
+
+			// Verify tracing mode round trip
+			expectedMode := TracingModeNormal
+			if strings.HasPrefix(tc.expected, "1") {
+				expectedMode = TracingModeSkipAnalysis
+			}
+			extractedMode := TracingModeFromContext(extractedCtx)
+			assert.Equal(t, expectedMode, extractedMode)
+		})
+	}
+}
+
+func TestSkyWalkingTimestampExtraction(t *testing.T) {
+	propagator := Skywalking{}
+
+	testCases := []struct {
+		name              string
+		sw8XValue         string
+		expectedTimestamp int64
+		expectedMode      string
+	}{
+		{
+			name:              "empty header",
+			sw8XValue:         "",
+			expectedTimestamp: 0,
+			expectedMode:      TracingModeNormal,
+		},
+		{
+			name:              "only tracing mode",
+			sw8XValue:         "1",
+			expectedTimestamp: 0,
+			expectedMode:      TracingModeSkipAnalysis,
+		},
+		{
+			name:              "tracing mode with empty timestamp",
+			sw8XValue:         "0- ",
+			expectedTimestamp: 0,
+			expectedMode:      TracingModeNormal,
+		},
+		{
+			name:              "tracing mode with timestamp",
+			sw8XValue:         "1-1602743904804",
+			expectedTimestamp: 1602743904804,
+			expectedMode:      TracingModeSkipAnalysis,
+		},
+		{
+			name:              "invalid timestamp format",
+			sw8XValue:         "0-invalid",
+			expectedTimestamp: 0,
+			expectedMode:      TracingModeNormal,
+		},
+		{
+			name:              "negative timestamp",
+			sw8XValue:         "0- -123",
+			expectedTimestamp: 0, // Malformed input (double separator) should not parse
+			expectedMode:      TracingModeNormal,
+		},
+		{
+			name:              "malformed negative timestamp",
+			sw8XValue:         "1--123", // This creates parsing ambiguity with double separator
+			expectedTimestamp: 0,        // Cannot parse due to ambiguous format
+			expectedMode:      TracingModeSkipAnalysis,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			carrier := make(propagation.MapCarrier)
+
+			// Add a valid SW8 header for SW8-X extraction to work
+			validSW8 := "1-" + base64.StdEncoding.EncodeToString([]byte(traceID.String())) +
+				"-" + base64.StdEncoding.EncodeToString([]byte(spanID.String())) +
+				"-123-" + base64.StdEncoding.EncodeToString([]byte("service")) +
+				"-" + base64.StdEncoding.EncodeToString([]byte("instance")) +
+				"-" + base64.StdEncoding.EncodeToString([]byte("endpoint")) +
+				"-" + base64.StdEncoding.EncodeToString([]byte("target"))
+			carrier.Set("sw8", validSW8)
+
+			if tc.sw8XValue != "" {
+				carrier.Set("sw8-x", tc.sw8XValue)
+			}
+
+			extractedCtx := propagator.Extract(context.Background(), carrier)
+
+			extractedTimestamp := TimestampFromContext(extractedCtx)
+			assert.Equal(t, tc.expectedTimestamp, extractedTimestamp)
+
+			extractedMode := TracingModeFromContext(extractedCtx)
+			assert.Equal(t, tc.expectedMode, extractedMode)
+		})
+	}
 }

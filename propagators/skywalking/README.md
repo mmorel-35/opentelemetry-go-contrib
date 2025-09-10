@@ -47,8 +47,8 @@ sw8-x: {tracing-mode}-{timestamp}
 Current implementation:
 
 - **Field 1**: Tracing Mode ("0" = normal analysis, "1" = skip analysis)
-- **Field 2**: Timestamp for async RPC latency calculation (future enhancement)
-- **Default**: Currently uses "0" (normal tracing mode)
+- **Field 2**: Timestamp for async RPC latency calculation (milliseconds since epoch)
+- **Default**: Uses "0" (normal tracing mode) with placeholder timestamp (" ")
 
 ## Usage
 
@@ -105,6 +105,50 @@ The propagator enforces the official specification limits:
 - Automatic BASE64 encoding/decoding for safe transport
 
 The propagator uses default "unknown" values for service metadata fields in the SW8 header, following the stateless design principle.
+
+### Tracing Mode Control
+
+The propagator supports SkyWalking tracing mode control through context utilities:
+
+```go
+import "go.opentelemetry.io/contrib/propagators/skywalking"
+
+// Set skip analysis mode
+ctx = skywalking.WithTracingMode(ctx, skywalking.TracingModeSkipAnalysis)
+
+// Inject includes SW8-X header with tracing mode
+propagator.Inject(ctx, carrier)
+
+// Extract preserves tracing mode in context
+extractedCtx := propagator.Extract(context.Background(), carrier)
+mode := skywalking.TracingModeFromContext(extractedCtx)
+```
+
+### Timestamp Support for Transmission Latency
+
+The propagator supports timestamps in SW8-X headers for transmission latency calculation:
+
+```go
+import (
+    "time"
+    "go.opentelemetry.io/contrib/propagators/skywalking"
+)
+
+// Set timestamp before sending request (milliseconds since epoch)
+timestamp := time.Now().UnixMilli()
+ctx = skywalking.WithTimestamp(ctx, timestamp)
+
+// Inject includes SW8-X header with timestamp
+propagator.Inject(ctx, carrier)
+
+// Extract preserves timestamp in context for latency calculation
+extractedCtx := propagator.Extract(context.Background(), carrier)
+receivedTimestamp := skywalking.TimestampFromContext(extractedCtx)
+if receivedTimestamp > 0 {
+    latency := time.Now().UnixMilli() - receivedTimestamp
+    // Use latency for monitoring/observability
+}
+```
 
 ## Specification Reference
 
